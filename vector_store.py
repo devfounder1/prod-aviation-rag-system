@@ -10,6 +10,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangChainDocument
 from config import settings
+from langchain.retrievers import ParentDocumentRetriever
+from langchain.storage import InMemoryStore # Или LocalFileStore для сохранения на диск
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
     
