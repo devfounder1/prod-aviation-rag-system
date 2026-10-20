@@ -24,23 +24,19 @@ class VectorStoreManager:
     4. Поиск похожих документов по запросу
     """
     def __init__(self):
-        """
-        Инициализация менеджера.
-        
-        Создаёт объект HuggingFaceEmbeddings, который будет использоваться
-        для всех операций с векторами. Модель загружается в память один раз
-        и переиспользуется для всех запросов.
-        """
-        logging.info(f" Загрузка модели эмбеддингов: {settings.embedder_model_name}")
+        logging.info(f"Загрузка модели эмбеддингов: {settings.embedder_model_name}")
         
         self.embeddings = HuggingFaceEmbeddings(
-            model_name = settings.embedder_model_name,
-            model_kwargs = {'device' : settings.embedder_device},
-            encode_kwargs = {'normalize_embeddings' : True},
+            model_name=settings.embedder_model_name,
+            model_kwargs={
+                'device': settings.embedder_device,
+                'local_files_only': True  # ДОБАВЛЕНО: Запрещает любые запросы в интернет
+            },
+            encode_kwargs={'normalize_embeddings': True},
         )
         
         self.vector_store: Optional[Chroma] = None
-        logging.info("Модель эмбеддингов загружена.")
+        logging.info("Модель эмбеддингов загружена (оффлайн-режим).")
     
     def create(self, documents: List[LangChainDocument]) -> Chroma:
         """
