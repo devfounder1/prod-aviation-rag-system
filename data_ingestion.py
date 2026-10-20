@@ -1,0 +1,135 @@
+"""
+Модуль для загрузки, очистки и разбиения (чанкинга) технических документов.
+"""
+import logging
+from pathlib import Path
+from typing import List
+from docx import Document
+import PyPDF2 
+import pdfplumber
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document as LangChainDocument
+from config import settings
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
+
+class DocumentIngestor:
+    """
+    Класс-оркестратор для обработки сырых документов.
+    """
+    def __init__(self):
+        # Путь к папке с документами берем из config.py
+        self.base_dir = Path(settings.documents_dir)
+        
+        # Инициализируем сплиттер (разбиватель текста)
+        # RecursiveCharacterTextSplitter — это золотой стандарт в LangChain.
+        # Он пытается разбить текст по иерархии: сначала по абзацам (\n\n), 
+        # затем по предложениям (. ), затем по словам ( ), и только в крайнем случае режет жестко.
+        self.splitter = RecursiveCharacterTextSplitter(
+            chunk_size = settings.chunk_size,
+            chunk_overlap = settings.chunk_overlap,
+            separators=["\n\n", "\n", ". ", ", ", " ", ""],
+            length_function = len
+        )
+    
+    def load_txt(self, file_path: Path) -> str:
+        """Чтение обычного текстового файла"""
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read()
+        
+    def load_docx(self, file_path: Path) -> str:
+        """Чтение Word-документа"""
+        doc = Document(file_path)
+        paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+        return '\n'.join(paragraphs)
+    
+    def load_pdf(self, file_path: Path) -> str:
+        """
+        Чтение PDF-файла.
+        Используем двухступенчатую систему для максимальной надежности.
+        """
+        text = ""
+        try: 
+            with pdfplumber.open(file_path) as pdf: 
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
+        except Exception as e: 
+            logging.warning(f"pdfplumber не справился с {file_path.name}, используем запасной вариант: {e}")
+
+            with open(file_path, 'rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
+        
+        return text
+    
+    def process(self) -> List[LangChainDocument]:
+        """
+        Главный метод: сканирует папку, читает файлы, разбивает на чанки 
+        и возвращает список объектов LangChain Document с метаданными.
+        """
+        logging.info(f"Начало сканирования папки : {self.base_dir.absolute()}")
+        
+        supported_text = {'.txt', '.docx', '.pdf'}
+        langchain_docs = []
+        
+        # rglob('*') рекурсивно обходит все подпапки
+        for file_path in self.base_dir.rglob('*'):
+            # Проверяем, что это файл и его расширение нам подходит
+            if file_path.is_file() and file_path.suffix.lower() in supported_text:
+                
+                if file_path.name.startswith('~$'):
+                    continue
+                
+                try: 
+                    if file_path.suffix.lower() == '.txt':
+                        text = self.load_txt(file_path)
+                    elif file_path.suffix.lower() == '.docx':
+                        text = self.load_docx(file_path)
+                    else : 
+                        text = self.load_pdf(file_path)
+                    
+                    # Разбиваем текст на чанки
+                    chunks = self.splitter.split_text(text)
+                    
+                    # Для каждого чанка создаем объект LangChain Document с метаданными
+                    for i, chunk in enumerate(chunks):
+                        if not chunk.strip():
+                            continue
+                        
+                        langchain_docs.append(LangChainDocument(
+                            page_content=chunk,
+                            metadata ={
+                                "source": str(file_path.absolute()),
+                                "filename": file_path.name,
+                                "chunk_index" : i,
+                                "chunk_total": len(chunks)
+                            }
+                        ))
+                
+                except Exception as e: 
+                    logging.error(f"Ошибка обработки файла {file_path.name}: {e}")
+        
+        logging.info(f"Успешно обработано и разбито на {len(langchain_docs)} чанков.")
+        return langchain_docs
+
+if __name__ == "__main__" : 
+    print("=" * 60)
+    print("ТЕСТ ЗАГРУЗКИ ДОКУМЕНТОВ")
+    print("=" * 60)
+    
+    ingestor = DocumentIngestor()
+    docs = ingestor.process()
+    
+    if docs:
+        print(f"\nПример первого чанка:")
+        print(f"Файл: {docs[0].metadata['filename']}")
+        print(f"Часть: {docs[0].metadata['chunk_index'] + 1} из {docs[0].metadata['chunk_total']}")
+        print(f"Длина: {len(docs[0].page_content)} символов")
+        print(f"Текст:\n{'-'*40}\n{docs[0].page_content[:400]}...\n{'-'*40}")
+    else:
+        print("Документы не найдены или не обработаны.")
