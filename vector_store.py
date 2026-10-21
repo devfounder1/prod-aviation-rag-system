@@ -1,21 +1,48 @@
 """
-Модуль для управления векторной базой данных ChromaDB с поддержкой Parent-Child Retrieval.
+Модуль для управления векторной базой данных ChromaDB с надежной кастомной реализацией Parent-Child Retrieval.
 """
 from data_ingestion import DocumentIngestor   
 import logging
+import uuid
+import os
+import json
 from pathlib import Path
 from typing import List, Optional
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangChainDocument
-# <-- ИСПРАВЛЕННЫЕ ИМПОРТЫ для LangChain >= 0.2.0
-from langchain_community.retrievers import ParentDocumentRetriever
-from langchain.storage import LocalFileStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import settings
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
-    
+
+
+# НАДЕЖНОЕ ХРАНИЛИЩЕ ДЛЯ РОДИТЕЛЕЙ (без зависимостей от langchain.storage)
+class SimpleFileStore:
+    def __init__(self, path: str):
+        self.path = path
+        os.makedirs(self.path, exist_ok=True)
+
+    def mset(self, key_value_pairs):
+        """Сохраняет пары (ключ, значение) в отдельные JSON файлы"""
+        for key, value in key_value_pairs:
+            file_path = os.path.join(self.path, f"{key}.json")
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(value, f, ensure_ascii=False)
+
+    def mget(self, keys):
+        """Загружает значения по списку ключей"""
+        results = []
+        for key in keys:
+            file_path = os.path.join(self.path, f"{key}.json")
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    results.append(json.load(f))
+            else:
+                results.append(None)
+        return results
+
+# МЕНЕДЖЕР ВЕКТОРНОЙ БАЗЫ
 class VectorStoreManager:
     def __init__(self): 
         logging.info(f"Загрузка модели эмбеддингов: {settings.embedder_model_name}")
@@ -29,103 +56,85 @@ class VectorStoreManager:
             encode_kwargs={'normalize_embeddings': True},
         )
         
-        # Родитель: большой чанк (2000-2500 символов), чтобы дать LLM полный контекст для развернутого ответа
+        # Сплиттер для РОДИТЕЛЕЙ
         self.parent_splitter = RecursiveCharacterTextSplitter(
             chunk_size=2000, 
             chunk_overlap=200,
             separators=["\n\n", "\n", ". ", " ", ""]
         )
         
-        # Ребенок: маленький чанк (400-500 символов), для идеальной точности векторного поиска
+        # Сплиттер для ДЕТЕЙ
         self.child_splitter = RecursiveCharacterTextSplitter(
             chunk_size=400, 
             chunk_overlap=50,
             separators=["\n\n", "\n", ". ", " ", ""]
         )
         
-        # Оно будет сохранено в подпапке parent_docs внутри основной директории Chroma
+        # Инициализация нашего надежного хранилища (ВСЕГДА SimpleFileStore, никаких dict!)
         parent_store_path = Path(settings.chroma_persist_dir) / "parent_docs"
-        self.docstore = LocalFileStore(str(parent_store_path))
+        self.docstore = SimpleFileStore(str(parent_store_path))
         
         self.vector_store: Optional[Chroma] = None
-        self.parent_retriever: Optional[ParentDocumentRetriever] = None
-        
-        logging.info("Модель эмбеддингов и сплиттеры инициализированы (оффлайн-режим).")
+        logging.info("Модель эмбеддингов, сплиттеры и хранилище инициализированы (оффлайн-режим).")
     
-    def create(self, documents: List[LangChainDocument]) -> ParentDocumentRetriever:
-        """
-        Создание новой базы с использованием Parent-Child Retrieval.
-        """
-        logging.info(f"Создание векторной базы из {len(documents)} документов (Parent-Child режим)")
+    def create(self, documents: List[LangChainDocument]) -> Chroma:
+        logging.info(f"Создание векторной базы (Parent-Child режим) из {len(documents)} документов")
         persist_path = Path(settings.chroma_persist_dir)
         
         if persist_path.exists():
-            logging.warning(f"Папка {persist_path} уже существует. База будет обновлена/перезаписана.")        
+            logging.warning(f"Папка {persist_path} уже существует. База будет перезаписана.")        
         
-        # 1. Создаем пустой Chroma для хранения ТОЛЬКО маленьких чанков (детей)
-        self.vector_store = Chroma(
-            embedding_function=self.embeddings,
+        parent_docs = self.parent_splitter.split_documents(documents)
+        child_docs = []
+        
+        for parent in parent_docs:
+            parent_id = str(uuid.uuid4())
+            self.docstore.mset([(parent_id, parent.page_content)])
+            
+            children = self.child_splitter.split_documents([parent])
+            for child in children:
+                child.metadata["parent_id"] = parent_id
+                child.metadata["filename"] = parent.metadata.get("filename", "Unknown")
+                child_docs.append(child)
+                
+        logging.info(f"Создано {len(parent_docs)} родителей и {len(child_docs)} детей.")
+        
+        self.vector_store = Chroma.from_documents(
+            documents=child_docs,
+            embedding=self.embeddings,
             persist_directory=str(persist_path),
-            collection_name="PRL27_technical_docs_children" # <-- Отдельная коллекция для детей
+            collection_name="PRL27_technical_docs_children"
         )
-        
-        # 2. Инициализируем ParentDocumentRetriever
-        self.parent_retriever = ParentDocumentRetriever(
-            vectorstore=self.vector_store,
-            docstore=self.docstore,
-            child_splitter=self.child_splitter,
-            parent_splitter=self.parent_splitter,
-        )
-        
-        # 3. Магия LangChain: add_documents сам разобьет документы на родителей и детей,
-        # сохранит родителей в docstore, а детей (со ссылками на родителей) отправит в Chroma.
-        self.parent_retriever.add_documents(documents)
         
         logging.info(f"Векторная база и хранилище родителей созданы в: {persist_path.absolute()}")
-        return self.parent_retriever
+        return self.vector_store
     
-    def load(self) -> ParentDocumentRetriever:
-        """
-        Загрузка существующей базы. LocalFileStore автоматически подгрузит сохраненных родителей.
-        """ 
+    def load(self) -> Chroma:
         persist_path = Path(settings.chroma_persist_dir)
-        parent_store_path = persist_path / "parent_docs"
         
-        if not persist_path.exists() or not parent_store_path.exists():
+        if not persist_path.exists():
             raise FileNotFoundError(
-                f"Векторная база или хранилище родителей не найдены по пути: {persist_path.absolute()}\n"
+                f"Векторная база не найдена по пути: {persist_path.absolute()}\n"
                 f"Сначала создайте базу через метод create()"
             )
         
-        logging.info(f"Загрузка векторной базы и хранилища родителей из: {persist_path.absolute()}")
+        logging.info(f"Загрузка векторной базы из: {persist_path.absolute()}")
         
-        # 1. Загружаем Chroma с детьми
         self.vector_store = Chroma(
             persist_directory=str(persist_path),
             collection_name="PRL27_technical_docs_children",
             embedding_function=self.embeddings
         )
         
-        # 2. Загружаем LocalFileStore с родителями (он читает файлы с диска автоматически)
-        self.docstore = LocalFileStore(str(parent_store_path))
-        
-        # 3. Собираем ретривер заново
-        self.parent_retriever = ParentDocumentRetriever(
-            vectorstore=self.vector_store,
-            docstore=self.docstore,
-            child_splitter=self.child_splitter,
-            parent_splitter=self.parent_splitter,
-        )
-
-        logging.info("Векторная база и родители загружены")
-        return self.parent_retriever
+        # Пересоздаем хранилище родителей (оно автоматически увидит файлы на диске)
+        parent_store_path = persist_path / "parent_docs"
+        self.docstore = SimpleFileStore(str(parent_store_path)) # <-- ТОЛЬКО SimpleFileStore
+            
+        logging.info("Векторная база и хранилище родителей загружены")
+        return self.vector_store
 
     def search(self, query: str, k: int = None) -> List[LangChainDocument]:
-        """
-        Поиск с использованием Parent-Child логики.
-        Ищет по маленьким чанкам, но возвращает БОЛЬШИЕ родительские чанки.
-        """
-        if self.parent_retriever is None:
+        if self.vector_store is None:
             raise RuntimeError("Векторная база данных не инициализирована")
         
         if k is None:
@@ -133,58 +142,59 @@ class VectorStoreManager:
             
         logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
 
-        # <-- ИЗМЕНЕНО: Используем invoke ретривера, он сам делает магию подстановки родителей
-        results = self.parent_retriever.invoke(query, k=k)
+        child_results = self.vector_store.similarity_search(query, k=k * 3)
+        logging.info(f"DEBUG: Найдено детей в Chroma: {len(child_results)}")
+
+        unique_parents = []
+        seen_parent_ids = set()
         
-        logging.info(f"Найдено документов (родителей): {len(results)}")
-        return results
-    
-    def search_with_scores(self, query: str, k: int = None) -> List[tuple]:
-        """
-        ВНИМАНИЕ: ParentDocumentRetriever по умолчанию не возвращает scores напрямую 
-        в удобном формате tuple, так как он агрегирует результаты. 
-        Для отладки лучше использовать обычный vector_store.similarity_search_with_score,
-        но помни, что это вернет детей, а не родителей.
-        """
-        if self.vector_store is None:
-            raise RuntimeError("Векторная база не инициализирована")
-        if k is None:
-            k = settings.search_top_k
-        
-        return self.vector_store.similarity_search_with_score(query, k=k)
-    
+        for child in child_results:
+            parent_id = child.metadata.get("parent_id")
+            logging.info(f"DEBUG: Проверяем ребенка, parent_id = {parent_id}")
+            
+            if parent_id and parent_id not in seen_parent_ids:
+                seen_parent_ids.add(parent_id)
+                
+                parent_text_list = self.docstore.mget([parent_id])
+                parent_text = parent_text_list[0] if parent_text_list else ""
+                
+                logging.info(f"DEBUG: Текст родителя получен: {bool(parent_text)} (длина: {len(parent_text) if parent_text else 0})")
+                
+                if parent_text:
+                    unique_parents.append(LangChainDocument(
+                        page_content=parent_text,
+                        metadata={"filename": child.metadata.get("filename", "Unknown")}
+                    ))
+                    
+                if len(unique_parents) >= k:
+                    break
+                    
+        logging.info(f"Найдено уникальных документов (родителей): {len(unique_parents)}")
+        return unique_parents
+
 if __name__ == "__main__":
     print("=" * 60)
-    print("ТЕСТ ВЕКТОРНОЙ БАЗЫ ДАННЫХ (PARENT-CHILD)")
+    print("ТЕСТ ВЕКТОРНОЙ БАЗЫ ДАННЫХ (CUSTOM PARENT-CHILD)")
     print("=" * 60)
     
     ingestor = DocumentIngestor()
     documents = ingestor.process()
     
     if not documents:
-        print(" Документы не найдены !!!!")
+        print("Документы не найдены !!!!")
         exit(1)
     
     manager = VectorStoreManager()
-    
-    # Создаем базу (первый запуск)
-    retriever = manager.create(documents)
+    manager.create(documents)
     
     print("\n" + "=" * 60)
     print("ТЕСТ ПОИСКА (Возвращаются большие родительские чанки!)")
     print("=" * 60)
     
-    test_queries = [
-        "Как включить излучение шкафа 276ГГ02?",
-        "Что такое сигнал PPS?"
-    ]
+    test_queries = ["Как включить излучение шкафа 276ГГ02?", "Что такое сигнал PPS?"]
     
     for query in test_queries:
-        print(f"\n Запрос: '{query}'")
+        print(f"\nЗапрос: '{query}'")
         results = manager.search(query, k=2)
-        
         for i, doc in enumerate(results):
-            print(f"   Результат #{i+1}:")
-            print(f"   Файл: {doc.metadata.get('filename')}")
-            print(f"   Длина текста: {len(doc.page_content)} символов (должно быть ~2000)")
-            print(f"   Текст:\n   {doc.page_content[:300]}...\n")
+            print(f"   Результат #{i+1}: {doc.metadata.get('filename')} | {len(doc.page_content)} симв.")

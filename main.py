@@ -4,9 +4,6 @@
 
 import logging
 from smart_rag import SmartRAG
-
-# Настраиваем логирование: показываем только предупреждения и ошибки, 
-# чтобы не засорять чат техническими деталями поиска.
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s : %(message)s')
 
 def main():
@@ -42,7 +39,6 @@ def main():
                 break
             
             # Получаем ответ от Smart RAG
-            # Мы временно включаем INFO логирование только для этого вызова, 
             # чтобы пользователь видел "мысли" системы (Интент, Поиск)
             logging.getLogger().setLevel(logging.INFO)
             answer = rag.query(user_input)
