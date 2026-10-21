@@ -7,7 +7,6 @@ from config import settings
 import logging
 from typing import List
 import numpy as np
-
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document as LangChainDocument
 
@@ -35,11 +34,11 @@ class HybridRetriever:
             self.reranker = CrossEncoder(
                 'BAAI/bge-reranker-v2-m3', 
                 max_length=512, 
-                local_files_only=True  # <-- ЭТО РЕШИТ ПРОБЛЕМУ
+                local_files_only=True 
             )
             logging.info("Модель реранкера успешно загружена (оффлайн-режим).")
         except Exception as e:
-            logging.warning(f"⚠️ Не удалось загрузить реранкер: {e}")
+            logging.warning(f"Не удалось загрузить реранкер: {e}")
             logging.info("Будет использоваться только гибридный поиск (BM25 + Vector + RRF).")
             
     def _build_bm25_index(self):
@@ -59,7 +58,7 @@ class HybridRetriever:
         if k is None:
             k = settings.rerank_top_k
         
-        candidate_k = min(k * 3, len(self.documents))  
+        candidate_k = min(15, len(self.documents))   
 
         vector_results = self.vector_store_manager.search(query, k=candidate_k)
         
@@ -100,23 +99,25 @@ class HybridRetriever:
             return []
             
         # Фильтруем заведомо бесполезные файлы по метаданным
-        filtered_docs = [
-            doc for doc in documents 
-            if "СОДЕРЖАНИЕ" not in doc.metadata.get('filename', '').upper()
-        ]
+        filtered_docs = []
+        for doc in documents:
+            filename = doc.metadata.get('filename', '').upper()
+            # Игнорируем: Содержание, файлы со словом "Вопрос" и сырые TXT логи
+            if "СОДЕРЖАНИЕ" not in filename and "ВОПРОС" not in filename and not filename.endswith('.TXT'):
+                filtered_docs.append(doc)
         
         if self.reranker is None:
             logging.info("Реранкинг пропущен. Возвращаем топ результатов гибридного поиска.")
             return filtered_docs[:top_k]
             
-        # ИСПРАВЛЕНО: Формируем пары и делаем zip строго с filtered_docs
+        # Формируем пары для модели строго с отфильтрованными документами
         pairs = [(query, doc.page_content) for doc in filtered_docs]
         scores = self.reranker.predict(pairs)
         
-        scored_docs = list(zip(filtered_docs, scores)) # <-- ИСПРАВЛЕНО ЗДЕСЬ
+        scored_docs = list(zip(filtered_docs, scores)) # <-- ИСПРАВЛЕНО: zip с filtered_docs
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         
-        return [doc for doc, score in scored_docs[:top_k]]   
+        return [doc for doc, score in scored_docs[:top_k]]     
 
 if __name__ == "__main__":
     print("=" * 60)
