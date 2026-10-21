@@ -85,7 +85,7 @@ class SmartRAG:
         return rewritten
     
     def query(self, question: str) -> str:
-        """Главный метод пайплайна"""
+        """Главный метод пайплайна с поддержкой Self-RAG (авто-повтор при неудаче)."""
         print(f"\nВопрос: '{question}'")
         
         intent = self.route(question)
@@ -100,31 +100,54 @@ class SmartRAG:
             # Переформулируем запрос пользователя в технический
             print("Переформулирование запроса для улучшения поиска...")
             search_query = self.rewrite_query(question)
-            print(f"Технический запрос для поиска: '{search_query}'")
+            print(f"Технический запрос для поиска (Попытка 1): '{search_query}'")
             
-            print("Запуск гибридного Parent-Child поиска (BM25 + Vector + RRF)...")
+            # Цикл Self-RAG (максимум 2 попытки)
+            max_attempts = 2
+            for attempt in range(1, max_attempts + 1):
+                print(f"Запуск поиска (Попытка {attempt})...")
+                docs = self.retriever.search(search_query, k=5)
+                
+                # Дедупликация
+                seen_texts = set()
+                unique_docs = []
+                for doc in docs:
+                    clean_text = " ".join(doc.page_content.split())
+                    if clean_text not in seen_texts:
+                        seen_texts.add(clean_text)
+                        unique_docs.append(doc)
+                
+                context = "\n\n---\n\n".join([
+                    f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}" 
+                    for doc in unique_docs
+                ])
+                
+                # Генерация ответа
+                chain = self.generator_prompt | self.llm
+                response = chain.invoke({"context": context, "question": question})
+                answer_text = response.content.lower()
+                
+                # Self-RAG Critique (Проверка качества ответа)
+                # Если модель говорит, что информации нет, и это ПЕРВАЯ попытка -> пробуем снова с более широким запросом
+                negative_phrases = ["нет информации", "не указано", "не объясняется", "к сожалению", "не содержит"]
+                is_failure = any(phrase in answer_text for phrase in negative_phrases)
+                
+                if is_failure and attempt == 1:
+                    print("Self-RAG: Ответ не найден. Автоматическое расширение поискового запроса...")
+                    # Делаем запрос шире: убираем специфичные детали, оставляем только суть
+                    broad_query_prompt = ChatPromptTemplate.from_messages([
+                        ("human", "Сделай этот поисковый запрос максимально широким и общим, оставив только ключевые технические термины: {query}")
+                    ])
+                    search_query = (broad_query_prompt | self.llm).invoke({"query": search_query}).content.strip()
+                    print(f"Расширенный технический запрос (Попытка 2): '{search_query}'")
+                    continue # Переходим ко второй попытке цикла
+                
+                # Если ответ найден (или это уже вторая попытка), возвращаем его
+                print("Успешный ответ сформирован.")
+                return f"[С поиском]:\n{response.content}"
             
-            # Ищем уже по переформулированному, "обогащенному" запросу!
-            docs = self.retriever.search(search_query, k=5)
-            
-            # Жесткая дедупликация (оставляем как было)
-            seen_texts = set()
-            unique_docs = []
-            for doc in docs:
-                clean_text = " ".join(doc.page_content.split())
-                if clean_text not in seen_texts:
-                    seen_texts.add(clean_text)
-                    unique_docs.append(doc)
-            
-            context = "\n\n---\n\n".join([
-                f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}" 
-                for doc in unique_docs
-            ])
-            
-            # Генерируем ответ на основе найденного контекста и ОРИГИНАЛЬНОГО вопроса пользователя
-            chain = self.generator_prompt | self.llm
-            response = chain.invoke({"context": context, "question": question}) # <-- Важно: передаем original question!
-            return f"[С поиском]:\n{response.content}"
+            # Если обе попытки не дали хорошего результата
+            return f"[С поиском]:\nК сожалению, даже после расширения поискового запроса, в предоставленной документации не найдено точной информации по вашему вопросу. Попробуйте переформулировать его или обратитесь к инженеру."
 
 
 # ИНТЕРАКТИВНЫЙ ЗАПУСК

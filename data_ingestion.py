@@ -38,26 +38,61 @@ class DocumentIngestor:
             return f.read()
         
     def load_docx(self, file_path: Path) -> str:
-        """Чтение Word-документа"""
+        """
+        Чтение Word-документа с извлечением текста и таблиц в Markdown.
+        """
         doc = Document(file_path)
-        paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-        return '\n'.join(paragraphs)
+        text_parts = []
+        
+        # Извлекаем текст из параграфов
+        for para in doc.paragraphs:
+            if para.text.strip():
+                text_parts.append(para.text)
+                
+        # Извлекаем таблицы и конвертируем в Markdown
+        for table_idx, table in enumerate(doc.tables):
+            text_parts.append(f"\n--- ТАБЛИЦА {table_idx + 1} (Markdown формат) ---")
+            markdown_lines = []
+            
+            for i, row in enumerate(table.rows):
+                # Очищаем текст ячейки от лишних переносов строк, чтобы не ломать Markdown
+                cells = [str(cell.text).strip().replace('\n', ' ') for cell in row.cells]
+                row_str = "| " + " | ".join(cells) + " |"
+                markdown_lines.append(row_str)
+                
+                if i == 0:
+                    # Добавляем разделитель заголовка таблицы (требование стандарта Markdown)
+                    separator = "|" + "|".join(["---" for _ in cells]) + "|"
+                    markdown_lines.append(separator)
+            
+            text_parts.append("\n".join(markdown_lines))
+            
+        return '\n'.join(text_parts)
     
     def load_pdf(self, file_path: Path) -> str:
-        """
-        Чтение PDF-файла.
-        Используем двухступенчатую систему для максимальной надежности.
-        """
+        """Чтение PDF-файла с улучленным извлечением таблиц."""
         text = ""
-        try: 
-            with pdfplumber.open(file_path) as pdf: 
+        try:
+            with pdfplumber.open(file_path) as pdf:
                 for page in pdf.pages:
+                    # 1. Извлекаем обычный текст
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + '\n'
-        except Exception as e: 
+                    
+                    # Извлекаем таблицы и конвертируем в Markdown
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if table:
+                            text += "\n--- ТАБЛИЦА (Markdown формат) ---\n"
+                            # Превращаем таблицу в Markdown-формат, который идеально понимает LLM
+                            markdown_table = "| " + " | ".join([str(cell or "").strip() for cell in table[0]]) + " |\n"
+                            markdown_table += "| " + " | ".join(["---" for _ in table[0]]) + " |\n"
+                            for row in table[1:]:
+                                markdown_table += "| " + " | ".join([str(cell or "").strip() for cell in row]) + " |\n"
+                            text += markdown_table + "\n"
+        except Exception as e:
             logging.warning(f"pdfplumber не справился с {file_path.name}, используем запасной вариант: {e}")
-
             with open(file_path, 'rb') as f:
                 reader = PyPDF2.PdfReader(f)
                 for page in reader.pages:
