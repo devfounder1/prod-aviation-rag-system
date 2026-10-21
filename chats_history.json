@@ -1,0 +1,28 @@
+{
+  "387a8de8": {
+    "name": "привет",
+    "messages": [
+      {
+        "role": "user",
+        "content": "привет"
+      },
+      {
+        "role": "assistant",
+        "content": "Привет! 👋  Чем могу помочь? 😊  \n"
+      }
+    ]
+  },
+  "1a08e419": {
+    "name": "привет",
+    "messages": [
+      {
+        "role": "user",
+        "content": "привет"
+      },
+      {
+        "role": "assistant",
+        "content": "Привет! 👋  Чем могу помочь? 😊  \n"
+      }
+    ]
+  }
+}
