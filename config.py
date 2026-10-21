@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # ==========================================
     # НАСТРОЙКИ LLM (ЯЗЫКОВАЯ МОДЕЛЬ)
     # ==========================================
-    llm_model_name: str = "gemma2:9b"
+    llm_model_name: str = "qwen2.5:14b"
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.2

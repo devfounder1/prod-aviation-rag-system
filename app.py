@@ -6,10 +6,381 @@ from pathlib import Path
 import sys
 from PIL import Image
 import tkinter as tk  
-
-
+import subprocess
+import platform
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
+import subprocess
+import platform
+import re
+import tkinter as tk
+from tkinter import ttk 
+import textwrap
+
+_TABLE_STYLE_COUNTER = 0
+
+def parse_markdown_to_widgets(parent, text: str, colors: dict):
+    """
+    Парсит Markdown-текст и создаёт CTk-виджеты внутри parent.
+    Поддерживает: заголовки, жирный текст, списки, таблицы, обычный текст.
+    """
+    lines = text.split('\n')
+    i = 0
+    indent_next = 0
+    
+    while i < len(lines):
+        line = lines[i].strip()
+        # Сбрасываем отступ вложенности, если строка — не пункт списка
+        if not (line.startswith('- ') or line.startswith('* ')):
+            indent_next = 0
+        
+        # ========== ЗАГОЛОВКИ ЛЮБОГО УРОВНЯ (# .. ######) ==========
+        heading_match = re.match(r'^(#{1,6})\s+(.*)', line)
+        if heading_match:
+            level = len(heading_match.group(1))
+            sizes = {1: 20, 2: 18, 3: 16, 4: 15, 5: 14, 6: 14}
+            ctk.CTkLabel(
+                parent, text=heading_match.group(2),
+                font=ctk.CTkFont(size=sizes.get(level, 14), weight="bold"),
+                text_color=colors["text_primary"],
+                anchor="w", justify="left"
+            ).pack(fill="x", pady=(15, 5), padx=10)
+            i += 1
+            continue
+        
+        if line.startswith('## '):
+            ctk.CTkLabel(
+                parent, text=line[3:],
+                font=ctk.CTkFont(size=18, weight="bold"),
+                text_color=colors["text_primary"],
+                anchor="w"
+            ).pack(fill="x", pady=(20, 8), padx=10)
+            i += 1
+            continue
+        
+        if line.startswith('# '):
+            ctk.CTkLabel(
+                parent, text=line[2:],
+                font=ctk.CTkFont(size=20, weight="bold"),
+                text_color=colors["text_primary"],
+                anchor="w"
+            ).pack(fill="x", pady=(20, 8), padx=10)
+            i += 1
+            continue
+        
+        # ========== ТАБЛИЦЫ ==========
+        if line.startswith('|') and '|' in line:
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith('|'):
+                table_lines.append(lines[i].strip())
+                i += 1
+            
+            has_separator = any('---' in l for l in table_lines)
+            
+            if has_separator and len(table_lines) >= 3:
+                def split_row(row):
+                    parts = row.split('|')
+                    if parts and parts[0].strip() == '':
+                        parts = parts[1:]
+                    if parts and parts[-1].strip() == '':
+                        parts = parts[:-1]
+                    return [p.strip() for p in parts]
+                
+                headers = split_row(table_lines[0])
+                separator_idx = next((idx for idx, l in enumerate(table_lines) if '---' in l), 1)
+                raw_data = table_lines[separator_idx + 1:]
+                num_cols = len(headers)
+                
+                valid_rows = []
+                for data_line in raw_data:
+                    cells = split_row(data_line)
+                    if not any(cells):
+                        continue
+                    while len(cells) < num_cols:
+                        cells.append("")
+                    valid_rows.append(cells[:num_cols])
+                
+                # ===== 1. Ширины колонок: заголовок обязан помещаться целиком =====
+                AVAILABLE_WIDTH = 950
+                HEADER_CHAR_PX = 8  # жирный шрифт 13px шире обычного
+                
+                base_widths = [max(120, len(h) * HEADER_CHAR_PX + 24) for h in headers]
+                total_base = sum(base_widths)
+                
+                if total_base > AVAILABLE_WIDTH:
+                    scale = AVAILABLE_WIDTH / total_base
+                    col_widths = [int(w * scale) for w in base_widths]
+                else:
+                    data_weights = []
+                    for col_idx in range(num_cols):
+                        mw = 0
+                        for cells in valid_rows:
+                            mw = max(mw, len(cells[col_idx]))
+                        data_weights.append(mw)
+                    tw = sum(data_weights) or 1
+                    extra = AVAILABLE_WIDTH - total_base
+                    col_widths = [
+                        base_widths[c] + int(extra * data_weights[c] / tw)
+                        for c in range(num_cols)
+                    ]
+                
+                # ===== 2. Переносим длинные ячейки на несколько строк =====
+                CHAR_PX = 7
+                LINE_PX = 18
+                
+                wrapped_rows = []
+                max_lines = 1
+                for cells in valid_rows:
+                    wrapped = []
+                    for col_idx, cell in enumerate(cells):
+                        chars_per_line = max(10, int((col_widths[col_idx] - 24) / CHAR_PX))
+                        wtext = textwrap.fill(cell, width=chars_per_line) if cell else ""
+                        max_lines = max(max_lines, wtext.count("\n") + 1 if wtext else 1)
+                        wrapped.append(wtext)
+                    wrapped_rows.append(wrapped)
+                
+                rowheight = max_lines * LINE_PX + 12
+                
+                # ===== 3. Контейнер таблицы =====
+                table_container = ctk.CTkFrame(
+                    parent, 
+                    fg_color=colors["bg_input"], 
+                    corner_radius=10,
+                    border_width=2,
+                    border_color=colors["border"]
+                )
+                table_container.pack(fill="x", pady=12, padx=10)
+                
+                tree = ttk.Treeview(
+                    table_container,
+                    columns=headers,
+                    show="headings",
+                    height=min(len(wrapped_rows), 15),
+                    selectmode="none"
+                )
+                
+                for col_idx, header in enumerate(headers):
+                    tree.heading(f"#{col_idx+1}", text=header, anchor="w")
+                    tree.column(f"#{col_idx+1}", width=col_widths[col_idx], minwidth=80, anchor="w", stretch=True)
+                
+                for row_idx, cells in enumerate(wrapped_rows):
+                    tag = "odd" if row_idx % 2 else "even"
+                    tree.insert("", "end", values=cells, tags=(tag,))
+                
+                # ===== 4. Стилизация (уникальное имя стиля-ПРЕФИКСА — layout находится) =====
+                style = ttk.Style()
+                try:
+                    if style.theme_use() != "clam":
+                        style.theme_use("clam")
+                except Exception:
+                    pass
+                
+                global _TABLE_STYLE_COUNTER
+                _TABLE_STYLE_COUNTER += 1
+                style_name = f"Tbl{_TABLE_STYLE_COUNTER}.Treeview"
+                
+                style.configure(
+                    style_name,
+                    background=colors["bg_input"],
+                    foreground=colors["text_primary"],
+                    fieldbackground=colors["bg_input"],
+                    rowheight=rowheight,
+                    font=("SF Pro Display", 12),
+                    borderwidth=0,
+                )
+                style.configure(
+                    f"{style_name}.Heading",
+                    background=colors["accent"],
+                    foreground="#ffffff",
+                    font=("SF Pro Display", 13, "bold"),
+                    relief="flat",
+                    borderwidth=0,
+                )
+                style.map(
+                    style_name,
+                    background=[("selected", colors["border"])],
+                    foreground=[("selected", "#ffffff")],
+                )
+                
+                tree.tag_configure("odd", background=colors["bg_input"])
+                tree.tag_configure("even", background=colors["bg_main"])
+                tree.configure(style=style_name)
+                
+                # Скроллбар только для больших таблиц
+                if len(wrapped_rows) > 15:
+                    scrollbar = ttk.Scrollbar(
+                        table_container, 
+                        orient="vertical", 
+                        command=tree.yview
+                    )
+                    tree.configure(yscrollcommand=scrollbar.set)
+                    tree.pack(side="left", fill="both", expand=True)
+                    scrollbar.pack(side="right", fill="y")
+                else:
+                    tree.pack(fill="x", expand=True, padx=5, pady=5)
+                
+                continue
+            else:
+                # Это не таблица, а просто текст с | — выводим как обычный текст
+                clean_line = line.replace('**', '').replace('|', '')
+                ctk.CTkLabel(
+                    parent, text=clean_line,
+                    font=ctk.CTkFont(size=14),
+                    text_color=colors["text_primary"],
+                    anchor="w", wraplength=700, justify="left"
+                ).pack(fill="x", pady=3, padx=5)
+                i += 1
+                continue
+        
+        # ========== СПИСКИ ==========
+        if line.startswith('- ') or line.startswith('* '):
+            item_text = line[2:].replace('**', '').strip()
+            is_intro = item_text.endswith(':')   # "Параметры:" — это подзаголовок группы
+            
+            list_frame = ctk.CTkFrame(parent, fg_color="transparent")
+            list_frame.pack(fill="x", pady=2, padx=10)
+            
+            if is_intro:
+                # Вводная строка группы: БЕЗ маркера, полужирным
+                ctk.CTkLabel(
+                    list_frame, text=item_text,
+                    font=ctk.CTkFont(size=14, weight="bold"),
+                    text_color=colors["text_primary"],
+                    anchor="w", justify="left", wraplength=830
+                ).pack(side="left", fill="x", expand=True)
+                indent_next = 30   # следующие пункты будут вложенными
+            else:
+                # Обычный пункт: маркер + текст, с отступом если был подзаголовок
+                ctk.CTkLabel(
+                    list_frame, text="•",
+                    font=ctk.CTkFont(size=15, weight="bold"),
+                    text_color=colors["accent"],
+                    anchor="nw"
+                ).pack(side="left", padx=(indent_next, 8))
+                
+                ctk.CTkLabel(
+                    list_frame, text=item_text,
+                    font=ctk.CTkFont(size=14),
+                    text_color=colors["text_primary"],
+                    anchor="w", justify="left", wraplength=800 - indent_next
+                ).pack(side="left", fill="x", expand=True)
+            i += 1
+            continue
+        
+        # Нумерованные списки
+        numbered_match = re.match(r'^(\d+)\.\s+(.*)', line)
+        if numbered_match:
+            num = numbered_match.group(1)
+            item_text = numbered_match.group(2).replace('**', '')
+            
+            list_frame = ctk.CTkFrame(parent, fg_color="transparent")
+            list_frame.pack(fill="x", pady=2, padx=10)
+            
+            ctk.CTkLabel(
+                list_frame, text=f"{num}.",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color=colors["accent"],
+                width=30,
+                anchor="nw"                      # ← номер прижат к ВЕРХУ строки
+            ).pack(side="left")
+            
+            ctk.CTkLabel(
+                list_frame, text=item_text,
+                font=ctk.CTkFont(size=14),
+                text_color=colors["text_primary"],
+                anchor="w", justify="left",      # ← текст выровнен по левому краю
+                wraplength=800
+            ).pack(side="left", fill="x", expand=True)
+            i += 1
+            continue
+        
+        # ========== ПУСТЫЕ СТРОКИ ==========
+        if not line:
+            i += 1
+            continue
+        
+        # ========== ОБЫЧНЫЙ ТЕКСТ ==========
+        clean_line = line.replace('**', '')
+        
+        ctk.CTkLabel(
+            parent, text=clean_line,
+            font=ctk.CTkFont(size=14),
+            text_color=colors["text_primary"],
+            anchor="w", wraplength=700, justify="left"
+        ).pack(fill="x", pady=3, padx=10)
+        i += 1
+
+def render_markdown_table(table_text: str, colors: dict) -> ctk.CTkFrame:
+    """Преобразует Markdown-таблицу в CTk-виджет"""
+    lines = table_text.strip().split('\n')
+    if len(lines) < 2:
+        return None
+    
+    # Парсим заголовки
+    headers = [cell.strip() for cell in lines[0].split('|') if cell.strip()]
+    
+    # Создаем фрейм для таблицы
+    table_frame = ctk.CTkFrame(None, fg_color=colors["bg_input"], corner_radius=8)
+    
+    # Заголовки
+    header_frame = ctk.CTkFrame(table_frame, fg_color=colors["border"], corner_radius=0)
+    header_frame.pack(fill="x")
+    for header in headers:
+        ctk.CTkLabel(
+            header_frame, text=header,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=colors["text_primary"],
+            padx=10, pady=8
+        ).pack(side="left", expand=True, fill="x")
+    
+    # Данные
+    for line in lines[2:]:  # Пропускаем разделитель
+        cells = [cell.strip() for cell in line.split('|') if cell.strip()]
+        if cells:
+            row_frame = ctk.CTkFrame(table_frame, fg_color="transparent")
+            row_frame.pack(fill="x")
+            for cell in cells:
+                ctk.CTkLabel(
+                    row_frame, text=cell,
+                    font=ctk.CTkFont(size=12),
+                    text_color=colors["text_primary"],
+                    padx=10, pady=6
+                ).pack(side="left", expand=True, fill="x")
+    
+    return table_frame
+
+def get_clipboard_text():
+    """Получить текст из буфера обмена (работает на всех платформах)"""
+    try:
+        if platform.system() == 'Darwin':  # macOS
+            result = subprocess.run(['pbpaste'], capture_output=True, text=True)
+            return result.stdout
+        elif platform.system() == 'Linux':
+            result = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], 
+                                  capture_output=True, text=True)
+            return result.stdout
+        else:  # Windows
+            result = subprocess.run(['clip'], capture_output=True, text=True)
+            return result.stdout
+    except Exception as e:
+        print(f"Ошибка чтения буфера: {e}")
+        return ""
+
+def set_clipboard_text(text: str):
+    """Установить текст в буфер обмена"""
+    try:
+        if platform.system() == 'Darwin':  # macOS
+            proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+            proc.communicate(text.encode('utf-8'))
+        elif platform.system() == 'Linux':
+            proc = subprocess.Popen(['xclip', '-selection', 'clipboard'], 
+                                  stdin=subprocess.PIPE)
+            proc.communicate(text.encode('utf-8'))
+        else:  # Windows
+            proc = subprocess.Popen(['clip'], stdin=subprocess.PIPE)
+            proc.communicate(text.encode('utf-8'))
+    except Exception as e:
+        print(f"Ошибка записи в буфер: {e}")
 
 # ==========================================
 # ЦВЕТОВАЯ ПАЛИТРА "AVIATION COCKPIT"
@@ -648,22 +1019,17 @@ class ChatArea(ctk.CTkFrame):
         outer.pack(fill="x", pady=10)
         
         if role == "user":
+            # Сообщение пользователя — простой текст справа
             row = ctk.CTkFrame(outer, fg_color="transparent")
             row.pack(side="right")
             
-            bubble = ctk.CTkFrame(
-                row, fg_color=self.colors["bg_bubble_user"], corner_radius=20
-            )
+            bubble = ctk.CTkFrame(row, fg_color=self.colors["bg_bubble_user"], corner_radius=20)
             bubble.pack(side="left", padx=(10, 0))
             
-            lbl = ctk.CTkLabel(
+            ctk.CTkLabel(
                 bubble, text=content, wraplength=700, justify="left",
                 text_color="#ffffff", font=ctk.CTkFont(size=15), padx=18, pady=14
-            )
-            lbl.pack()
-            
-            # Добавляем возможность копирования по правому клику
-            lbl.bind("<Button-3>", lambda e, t=content: self._copy_text(t))
+            ).pack()
             
             if "user" in self.assets:
                 ctk.CTkLabel(row, image=self.assets["user"], text="").pack(side="right", padx=(12, 0))
@@ -671,6 +1037,7 @@ class ChatArea(ctk.CTkFrame):
                 ctk.CTkLabel(row, text="👤", font=ctk.CTkFont(size=28)).pack(side="right", padx=(12, 0))
         
         else:
+            # Сообщение ассистента — с поддержкой Markdown
             row = ctk.CTkFrame(outer, fg_color="transparent")
             row.pack(side="left", fill="x")
             
@@ -679,32 +1046,27 @@ class ChatArea(ctk.CTkFrame):
             else:
                 ctk.CTkLabel(row, text="🤖", font=ctk.CTkFont(size=28)).pack(side="left", padx=(0, 14))
             
-            bubble = ctk.CTkFrame(
-                row, fg_color=self.colors["bg_bubble_ai"], corner_radius=20
-            )
+            bubble = ctk.CTkFrame(row, fg_color=self.colors["bg_bubble_ai"], corner_radius=20)
             bubble.pack(side="left", fill="x", expand=True)
             
-            lbl = ctk.CTkLabel(
-                bubble, text=content, wraplength=700, justify="left",
-                text_color=self.colors["text_primary"], font=ctk.CTkFont(size=15), padx=18, pady=14
-            )
-            lbl.pack(fill="x")
+            # 🚀 ПАРСИМ MARKDOWN И СОЗДАЁМ ВИДЖЕТЫ
+            parse_markdown_to_widgets(bubble, content, self.colors)
             
-            # Правый клик по ответу — копирует весь текст ответа
-            lbl.bind("<Button-3>", lambda e, t=content: self._copy_text(t))
-            lbl.bind("<Double-Button-1>", lambda e, t=content: self._copy_text(t))  # Двойной клик тоже копирует
+            # Правый клик / двойной клик — копирует весь ответ
+            bubble.bind("<Button-3>", lambda e, t=content: self._copy_text(t))
+            bubble.bind("<Double-Button-1>", lambda e, t=content: self._copy_text(t))
         
         self.messages_frame._parent_canvas.yview_moveto(1.0)
     
     def _copy_text(self, text: str):
-        """Копирует текст в буфер обмена (работает и для ответов модели)"""
+        """Копирует текст в буфер обмена через pbcopy"""
         try:
-            self.clipboard_clear()
-            self.clipboard_append(text)
+            set_clipboard_text(text)
             print(f"Скопировано в буфер: {text[:50]}...")
-            # Визуальная обратная связь
-            self.status_label.configure(text="Скопировано в буфер обмена", text_color=self.colors["status_ready"])
-            self.after(2000, lambda: self.status_label.configure(text="● Готов", text_color=self.colors["status_ready"]))
+            self.status_label.configure(text="Скопировано в буфер обмена", 
+                                    text_color=self.colors["status_ready"])
+            self.after(2000, lambda: self.status_label.configure(
+                text="● Готов", text_color=self.colors["status_ready"]))
         except Exception as e:
             print(f"Ошибка копирования: {e}")
             
@@ -722,12 +1084,8 @@ class ChatArea(ctk.CTkFrame):
         self.messages_frame.configure(fg_color="transparent")
         self.model_label.configure(text_color=self.colors["text_secondary"])
 
-
 # ==========================================
 # ОБЛАСТЬ ВВОДА
-# ==========================================
-# ==========================================
-# ОБЛАСТЬ ВВОДА (с полной поддержкой буфера обмена на macOS)
 # ==========================================
 class InputArea(ctk.CTkFrame):
     def __init__(self, master, theme: str = "dark", assets: dict = None, on_send=None, **kwargs):
@@ -742,39 +1100,35 @@ class InputArea(ctk.CTkFrame):
         input_frame = ctk.CTkFrame(self, fg_color=self.colors["bg_input"], corner_radius=14)
         input_frame.pack(fill="x", padx=20, pady=12)
         
-        self.textbox = ctk.CTkTextbox(
-            input_frame, height=60, font=ctk.CTkFont(size=15), wrap="word",
-            fg_color=self.colors["bg_input"], border_width=0, text_color=self.colors["text_primary"]
+        # ИСПОЛЬЗУЕМ НАТИВНЫЙ tk.Text ВМЕСТО ctk.CTkTextbox
+        # Это гарантирует работу Cmd+V, Cmd+C, Cmd+X на macOS
+        self.textbox = tk.Text(
+            input_frame,
+            height=3,  # Примерно 60 пикселей
+            font=("SF Pro Display", 15),  # Системный шрифт macOS
+            wrap="word",
+            bg=self.colors["bg_input"],
+            fg=self.colors["text_primary"],
+            insertbackground=self.colors["text_primary"],  # Цвет курсора
+            selectbackground=self.colors["accent"],  # Цвет выделения
+            selectforeground="#ffffff",
+            borderwidth=0,
+            highlightthickness=0,  # Убираем рамку фокуса
+            padx=18,
+            pady=14,
+            relief="flat"
         )
-        self.textbox.pack(side="left", fill="both", expand=True, padx=18, pady=14)
+        self.textbox.pack(side="left", fill="both", expand=True)
+        
+        # Привязываем Enter для отправки
         self.textbox.bind("<Return>", self._on_enter)
         self.textbox.bind("<Shift-Return>", lambda e: None)
         
-        # привязываем ВСЕ горячие клавиши буфера обмена 
-        # к ВНУТРЕННЕМУ виджету _textbox, потому что именно он получает фокус
-        inner = self.textbox._textbox
-        
-        # Вставка
-        inner.bind("<Command-v>", self._paste)
-        inner.bind("<Control-v>", self._paste)
-        inner.bind("<<Paste>>", self._paste)
-        
-        # Копирование
-        inner.bind("<Command-c>", self._copy)
-        inner.bind("<Control-c>", self._copy)
-        inner.bind("<<Copy>>", self._copy)
-        
-        # Вырезание
-        inner.bind("<Command-x>", self._cut)
-        inner.bind("<Control-x>", self._cut)
-        inner.bind("<<Cut>>", self._cut)
-        
-        # Выделить всё
-        inner.bind("<Command-a>", self._select_all)
-        inner.bind("<Control-a>", self._select_all)
+        # НАТИВНЫЕ горячие клавиши macOS работают автоматически с tk.Text!
+        # Cmd+V, Cmd+C, Cmd+X, Cmd+A — всё работает из коробки
         
         # Правый клик — контекстное меню
-        inner.bind("<Button-3>", self._show_context_menu)
+        self.textbox.bind("<Button-3>", self._show_context_menu)
         
         self.textbox.insert("1.0", "Message RAG Assistant...")
         self.textbox.bind("<FocusIn>", self._on_focus_in)
@@ -797,54 +1151,42 @@ class InputArea(ctk.CTkFrame):
         )
         self.disclaimer_label.pack(side="left", padx=20, pady=(0, 12))
     
-    # ========== ОБРАБОТЧИКИ БУФЕРА ОБМЕНА ==========
+    def _on_focus_in(self, event):
+        if self.textbox.get("1.0", "end-1c").strip() == "Message RAG Assistant...":
+            self.textbox.delete("1.0", "end")
     
-    def _paste(self, event=None):
-        """Вставка из буфера обмена"""
-        print("[DEBUG] ВСТАВКА")
-        try:
-            clipboard_text = self.textbox._textbox.clipboard_get()
-            if clipboard_text:
-                current = self.textbox.get("1.0", "end-1c").strip()
-                if current == "Message RAG Assistant...":
-                    self.textbox.delete("1.0", "end")
-                self.textbox._textbox.insert("insert", clipboard_text)
-                print(f"Вставлено: {clipboard_text[:50]}")
-        except tk.TclError as e:
-            print(f" Ошибка вставки: {e}")
-        return "break"  # Блокируем стандартную обработку macOS
+    def _on_focus_out(self, event):
+        if not self.textbox.get("1.0", "end-1c").strip():
+            self.textbox.insert("1.0", "Message RAG Assistant...")
     
-    def _copy(self, event=None):
-        """Копирование выделенного текста в буфер"""
-        print("[DEBUG] КОПИРОВАНИЕ")
-        try:
-            selection = self.textbox._textbox.selection_get()
-            if selection:
-                self.textbox._textbox.clipboard_clear()
-                self.textbox._textbox.clipboard_append(selection)
-                print(f"Скопировано: {selection[:50]}")
-        except tk.TclError:
-            print("Нечего копировать (нет выделения)")
-        return "break"
+    def _on_enter(self, event):
+        if not event.state & 1:  # Shift не нажат
+            self._handle_send()
+            return "break"
     
-    def _cut(self, event=None):
-        """Вырезание выделенного текста"""
-        print("📋 [DEBUG] ВЫРЕЗАНИЕ")
-        try:
-            selection = self.textbox._textbox.selection_get()
-            if selection:
-                self.textbox._textbox.clipboard_clear()
-                self.textbox._textbox.clipboard_append(selection)
-                self.textbox._textbox.delete("sel.first", "sel.last")
-                print(f"✅ Вырезано: {selection[:50]}")
-        except tk.TclError:
-            print("⚠️ Нечего вырезать")
-        return "break"
+    def _handle_send(self):
+        text = self.textbox.get("1.0", "end-1c").strip()
+        if not text or text == "Message RAG Assistant...":
+            return
+        self.textbox.delete("1.0", "end")
+        if self.on_send:
+            self.on_send(text)
     
-    def _select_all(self, event=None):
-        """Выделить весь текст"""
-        self.textbox._textbox.tag_add("sel", "1.0", "end")
-        return "break"
+    def set_theme(self, theme: str):
+        self.theme = theme
+        self.colors = THEMES[theme]
+        self.textbox.configure(
+            bg=self.colors["bg_input"],
+            fg=self.colors["text_primary"],
+            insertbackground=self.colors["text_primary"],
+            selectbackground=self.colors["accent"]
+        )
+        self.disclaimer_label.configure(text_color=self.colors["text_secondary"])
+    
+    def insert_text(self, text: str):
+        self.textbox.delete("1.0", "end")
+        self.textbox.insert("1.0", text)
+        self.textbox.focus_set()
     
     def _show_context_menu(self, event):
         """Контекстное меню по правому клику"""
@@ -853,11 +1195,11 @@ class InputArea(ctk.CTkFrame):
                        fg=self.colors["text_primary"],
                        activebackground=self.colors["border"],
                        activeforeground=self.colors["text_primary"])
-        menu.add_command(label="Вырезать", command=self._cut)
-        menu.add_command(label="Копировать", command=self._copy)
-        menu.add_command(label="Вставить", command=self._paste)
+        menu.add_command(label="Вырезать", command=lambda: self.textbox.event_generate("<<Cut>>"))
+        menu.add_command(label="Копировать", command=lambda: self.textbox.event_generate("<<Copy>>"))
+        menu.add_command(label="Вставить", command=lambda: self.textbox.event_generate("<<Paste>>"))
         menu.add_separator()
-        menu.add_command(label="Выделить всё", command=self._select_all)
+        menu.add_command(label="Выделить всё", command=lambda: self.textbox.tag_add("sel", "1.0", "end"))
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -896,7 +1238,34 @@ class InputArea(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         self.textbox.insert("1.0", text)
         self.textbox.focus_set()
-        
+    
+    def _paste(self, event=None):
+        """Вставка из буфера обмена через pbpaste"""
+        print("[DEBUG] ВСТАВКА через pbpaste")
+        try:
+            clipboard_text = get_clipboard_text()
+            if clipboard_text:
+                current = self.textbox.get("1.0", "end-1c").strip()
+                if current == "Message RAG Assistant...":
+                    self.textbox.delete("1.0", "end")
+                self.textbox.insert("insert", clipboard_text)
+                print(f"Вставлено: {clipboard_text[:50]}")
+        except Exception as e:
+            print(f" Ошибка вставки: {e}")
+        return "break"
+
+    def _copy(self, event=None):
+        """Копирование через pbcopy"""
+        print("[DEBUG] КОПИРОВАНИЕ через pbcopy")
+        try:
+            selection = self.textbox.get("sel.first", "sel.last")
+            if selection:
+                set_clipboard_text(selection)
+                print(f"Скопировано: {selection[:50]}")
+        except tk.TclError:
+            print("Нечего копировать")
+        return "break"
+    
 # ГЛАВНОЕ ПРИЛОЖЕНИЕ
 class AviationRAGApp(ctk.CTk):
     def __init__(self):
