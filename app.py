@@ -1563,6 +1563,7 @@ class InputArea(ctk.CTkFrame):
         self.textbox.bind("<<Cut>>", self._cut)
         self.textbox.bind("<Command-a>", self._select_all)
         self.textbox.bind("<Control-a>", self._select_all)
+        self.textbox.bind("<Key>", self._on_raw_key)
         self.textbox.bind("<Button-3>", self._show_context_menu)
         
         self.textbox.insert("1.0", "Message RAG Assistant...")
@@ -1662,7 +1663,32 @@ class InputArea(ctk.CTkFrame):
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
-     
+
+    def _on_raw_key(self, event):
+        """Перехват Cmd/Ctrl+V, C, X, A на уровне сырых нажатий"""
+        kl = event.keysym.lower()
+        is_cmd = bool(event.state & 0x40) or bool(event.state & 0x04)
+        
+        # Навигация (с Shift и без) — пропускаем
+        if kl in ('left', 'right', 'up', 'down', 'home', 'end',
+                  'prior', 'next', 'page_up', 'page_down'):
+            return None
+        
+        # Cmd/Ctrl + горячие клавиши
+        if is_cmd:
+            if kl == 'v':
+                return self._paste()
+            if kl == 'c':
+                return self._copy()
+            if kl == 'x':
+                return self._cut()
+            if kl == 'a':
+                return self._select_all()
+            return "break"
+        
+        # Обычные клавиши — не трогаем
+        return None
+
     # ---------- прочее ----------
     def set_theme(self, theme: str):
         self.theme = theme
