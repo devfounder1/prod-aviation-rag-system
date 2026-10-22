@@ -186,7 +186,16 @@ def build_table_widget(master, table_lines, colors, available=None):
             parts = parts[1:]
         if parts and parts[-1].strip() == '':
             parts = parts[:-1]
-        return [p.strip() for p in parts]
+        # Очищаем Markdown-разметку из каждой ячейки
+        cleaned = []
+        for p in parts:
+            cell = p.strip()
+            cell = cell.replace('**', '').replace('__', '')
+            cell = cell.replace('*', '').replace('_', '')
+            cell = cell.replace('`', '')
+            cell = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', cell)
+            cleaned.append(cell)
+        return cleaned
     
     headers = split_row(table_lines[0])
     separator_idx = next((idx for idx, l in enumerate(table_lines) if '---' in l), 1)
@@ -206,6 +215,7 @@ def build_table_widget(master, table_lines, colors, available=None):
     HEADER_CHAR_PX = 8
     base_widths = [max(120, len(h) * HEADER_CHAR_PX + 24) for h in headers]
     total_base = sum(base_widths)
+    
     if total_base > AVAILABLE_WIDTH:
         scale = AVAILABLE_WIDTH / total_base
         col_widths = [int(w * scale) for w in base_widths]
@@ -240,7 +250,7 @@ def build_table_widget(master, table_lines, colors, available=None):
     for col_idx, header in enumerate(headers):
         tree.heading(f"#{col_idx+1}", text=header, anchor="w")
         tree.column(f"#{col_idx+1}", width=col_widths[col_idx], minwidth=60,
-                    anchor="w", stretch=True)   # ← растягиваем на всю ширину контейнера
+                    anchor="w", stretch=True)
     for row_idx, cells in enumerate(wrapped_rows):
         tree.insert("", "end", values=cells, tags=("odd" if row_idx % 2 else "even",))
     
@@ -250,7 +260,7 @@ def build_table_widget(master, table_lines, colors, available=None):
             style.theme_use("clam")
     except Exception:
         pass
-    # Используем одно фиксированное имя стиля для всех таблиц
+    
     style_name = "Custom.Treeview"
     style.configure(style_name, background=colors["bg_input"], foreground=colors["text_primary"],
                     fieldbackground=colors["bg_input"], rowheight=rowheight,
@@ -1071,7 +1081,15 @@ class ChatArea(ctk.CTkFrame):
                 parts = row.split('|')
                 if parts and parts[0].strip() == '': parts = parts[1:]
                 if parts and parts[-1].strip() == '': parts = parts[:-1]
-                return [p.strip() for p in parts]
+                cleaned = []
+                for p in parts:
+                    cell = p.strip()
+                    cell = cell.replace('**', '').replace('__', '')
+                    cell = cell.replace('*', '').replace('_', '')
+                    cell = cell.replace('`', '')
+                    cell = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', cell)
+                    cleaned.append(cell)
+                return cleaned
             
             rows = [split_row(l) for l in table_lines if '---' not in l and '|' in l]
             if not rows:
@@ -1081,7 +1099,6 @@ class ChatArea(ctk.CTkFrame):
             self._copy_text(tsv)
         except Exception as e:
             print(f"[DEBUG] Ошибка копирования таблицы: {e}")
-            # В случае ошибки копируем исходный markdown как есть
             self._copy_text("\n".join(table_lines))
     
     def _build_background(self):
@@ -1495,7 +1512,8 @@ class AviationRAGApp(ctk.CTk):
 
     def _global_key_router(self, event):
         """Страховка: ловит Cmd/Ctrl+C,V,X,A на уровне окна, если виджетные bind'ы не сработали."""
-        is_cmd = bool(event.state & 0x40) or bool(event.state & 0x04)
+        # Добавили 0x100000 для надёжности на некоторых версиях macOS/Tkinter
+        is_cmd = bool(event.state & 0x40) or bool(event.state & 0x04) or bool(event.state & 0x100000)
         if not is_cmd:
             return None
         k = event.keysym.lower()
