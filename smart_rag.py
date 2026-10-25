@@ -107,79 +107,95 @@ class SmartRAG:
         chain = rewrite_prompt | self.llm
         rewritten = chain.invoke({"question": question}).content.strip()
         return rewritten
-    
+
+    def _get_user_context(self, question: str) -> str:
+        """Контекст из документов, загруженных пользователем (кнопка '+')."""
+        try:
+            from document_processor import retrieve_user_context
+            ctx = retrieve_user_context(question, k=4)
+            if ctx:
+                print(f"[SmartRAG] Контекст из пользовательских документов: {len(ctx)} симв.", flush=True)
+            return ctx or ""
+        except Exception as e:
+            print(f"[SmartRAG] пользовательские документы недоступны: {e}", flush=True)
+            return ""
+
     def query(self, question: str) -> str:
-        """Главный метод пайплайна с поддержкой Self-RAG (авто-повтор при неудаче)."""
-        print(f"\nВопрос: '{question}'")
+        """Главный метод пайплайна: Self-RAG + приоритет пользовательских документов."""
+        print(f"\nВопрос: '{question}'", flush=True)
+        
+        # 0. Приоритетный контекст из загруженных пользователем документов
+        user_ctx = self._get_user_context(question)
         
         intent = self.route(question)
-        print(f"Интент модели: {intent}")
+        print(f"Интент модели: {intent}", flush=True)
         
-        if intent == "CHAT":
+        # CHAT без пользовательских документов — обычный ассистент
+        if intent == "CHAT" and not user_ctx:
             chain = self.generator_prompt | self.llm
-            response = chain.invoke({"context": "Контекст отсутствует. Отвечай как обычный вежливый ассистент.", "question": question})
+            response = chain.invoke({
+                "context": "Контекст отсутствует. Отвечай как обычный вежливый ассистент.",
+                "question": question})
             return f"[Без поиска]: {response.content}"
+        
+        # CHAT, но есть пользовательский документ (например «что в моём документе?»)
+        if intent == "CHAT" and user_ctx:
+            chain = self.generator_prompt | self.llm
+            response = chain.invoke({"context": user_ctx, "question": question})
+            return f"[С поиском]:\n{response.content}"
+        
+        # SEARCH-ветка с Self-RAG
+        print("Переформулирование запроса для улучшения поиска...", flush=True)
+        search_query = self.rewrite_query(question)
+        print(f"Технический запрос для поиска (Попытка 1): '{search_query}'", flush=True)
+        
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            print(f"Запуск поиска (Попытка {attempt})...", flush=True)
+            docs = self.retriever.search(search_query, k=5)
             
-        else:
-            # Переформулируем запрос пользователя в технический
-            print("Переформулирование запроса для улучшения поиска...")
-            search_query = self.rewrite_query(question)
-            print(f"Технический запрос для поиска (Попытка 1): '{search_query}'")
+            seen_texts = set()
+            unique_docs = []
+            for doc in docs:
+                clean_text = " ".join(doc.page_content.split())
+                if clean_text not in seen_texts:
+                    seen_texts.add(clean_text)
+                    unique_docs.append(doc)
             
-            # Цикл Self-RAG (максимум 2 попытки)
-            max_attempts = 2
-            for attempt in range(1, max_attempts + 1):
-                print(f"Запуск поиска (Попытка {attempt})...")
-                docs = self.retriever.search(search_query, k=5)
-                
-                # Дедупликация
-                seen_texts = set()
-                unique_docs = []
-                for doc in docs:
-                    clean_text = " ".join(doc.page_content.split())
-                    if clean_text not in seen_texts:
-                        seen_texts.add(clean_text)
-                        unique_docs.append(doc)
-                
-                context = "\n\n---\n\n".join([
-                    f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}" 
-                    for doc in unique_docs
+            context = "\n\n---\n\n".join([
+                f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}"
+                for doc in unique_docs
+            ])
+            
+            # Пользовательские документы идут ПЕРВЫМИ в контексте
+            if user_ctx:
+                context = user_ctx + "\n\n---\n\n" + context
+            
+            chain = self.generator_prompt | self.llm
+            response = chain.invoke({"context": context, "question": question})
+            answer_text = response.content.lower()
+            
+            negative_phrases = [
+                "нет информации", "не указано", "не объясняется", "к сожалению",
+                "не содержит", "отсутствует информация", "нет данных"
+            ]
+            is_failure = any(phrase in answer_text for phrase in negative_phrases)
+            
+            if is_failure and attempt == 1 and not user_ctx:
+                print("Self-RAG: Ответ не найден. Автоматическое расширение поискового запроса...", flush=True)
+                broad_query_prompt = ChatPromptTemplate.from_messages([
+                    ("human", "Сделай этот поисковый запрос максимально широким и общим, оставив только ключевые технические термины и их синонимы: {query}")
                 ])
-                
-                # Генерация ответа
-                chain = self.generator_prompt | self.llm
-                response = chain.invoke({"context": context, "question": question})
-                answer_text = response.content.lower()
-                
-                # Если модель говорит, что информации нет, и это ПЕРВАЯ попытка -> пробуем снова с более широким запросом
-                # Self-RAG Critique (Проверка качества ответа)
-                negative_phrases = [
-                    "нет информации", 
-                    "не указано", 
-                    "не объясняется", 
-                    "к сожалению", 
-                    "не содержит",
-                    "отсутствует информация",
-                    "нет данных"
-                ]
-                is_failure = any(phrase in answer_text for phrase in negative_phrases)
-
-                if is_failure and attempt == 1:
-                    print("Self-RAG: Ответ не найден. Автоматическое расширение поискового запроса...")
-                    # Делаем запрос максимально широким
-                    broad_query_prompt = ChatPromptTemplate.from_messages([
-                        ("human", "Сделай этот поисковый запрос максимально широким и общим, оставив только ключевые технические термины и их синонимы: {query}")
-                    ])
-                    search_query = (broad_query_prompt | self.llm).invoke({"query": search_query}).content.strip()
-                    print(f"Расширенный технический запрос (Попытка 2): '{search_query}'")
-                    continue
-                
-                # Если ответ найден (или это уже вторая попытка), возвращаем его
-                print("Успешный ответ сформирован.")
-                return f"[С поиском]:\n{response.content}"
+                search_query = (broad_query_prompt | self.llm).invoke({"query": search_query}).content.strip()
+                print(f"Расширенный технический запрос (Попытка 2): '{search_query}'", flush=True)
+                continue
             
-            # Если обе попытки не дали хорошего результата
-            return f"[С поиском]:\nК сожалению, даже после расширения поискового запроса, в предоставленной документации не найдено точной информации по вашему вопросу. Попробуйте переформулировать его или обратитесь к инженеру."
+            print("Успешный ответ сформирован.", flush=True)
+            return f"[С поиском]:\n{response.content}"
+        
+        return ("[С поиском]:\nК сожалению, даже после расширения поискового запроса, "
+                "в предоставленной документации не найдено точной информации по вашему вопросу. "
+                "Попробуйте переформулировать его или обратитесь к инженеру.")
 
 
 # ИНТЕРАКТИВНЫЙ ЗАПУСК

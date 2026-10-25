@@ -13,11 +13,14 @@ from smart_rag import SmartRAG
 import re
 from tkinter import ttk 
 import textwrap
+from tkinter import filedialog
 
 _TABLE_STYLE_COUNTER = 0
+UI_FONT = "SF Pro Display" if platform.system() == "Darwin" else "Segoe UI"
+BASE_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 
 def _make_selectable_text(parent, colors, wrap="word", bg=None, fg=None,
-                          font=("SF Pro Display", 14), padx=10, pady=4):
+                          font=(UI_FONT, 14), padx=10, pady=4):
     """Read-only текстовый блок: можно выделять мышью и копировать, но нельзя редактировать."""
     bg = bg or colors["bg_bubble_ai"]
     fg = fg or colors["text_primary"]
@@ -259,9 +262,9 @@ def build_table_widget(master, table_lines, colors, available=None):
     style_name = "Custom.Treeview"
     style.configure(style_name, background=colors["bg_input"], foreground=colors["text_primary"],
                     fieldbackground=colors["bg_input"], rowheight=rowheight,
-                    font=("SF Pro Display", 12), borderwidth=0)
+                    font=(UI_FONT, 12), borderwidth=0)
     style.configure(f"{style_name}.Heading", background=colors["accent"], foreground="#ffffff",
-                    font=("SF Pro Display", 13, "bold"), relief="flat", borderwidth=0)
+                    font=(UI_FONT, 13, "bold"), relief="flat", borderwidth=0)
     tree.tag_configure("odd", background=colors["bg_input"])
     tree.tag_configure("even", background=colors["bg_main"])
     tree.configure(style=style_name)
@@ -271,28 +274,28 @@ def build_table_widget(master, table_lines, colors, available=None):
 
 def render_markdown_to_text(textw, text, colors, wheel_handler=None, table_max=900):
     """Рендерит markdown в tk.Text с тегами — текст МОЖНО выделять курсором"""
-    textw.tag_configure("h1", font=("SF Pro Display", 20, "bold"), spacing1=14, spacing3=8)
-    textw.tag_configure("h2", font=("SF Pro Display", 18, "bold"), spacing1=12, spacing3=6)
-    textw.tag_configure("h3", font=("SF Pro Display", 16, "bold"), spacing1=10, spacing3=5)
-    textw.tag_configure("h4", font=("SF Pro Display", 15, "bold"), spacing1=8, spacing3=4)
-    textw.tag_configure("plain", font=("SF Pro Display", 14), spacing1=2, spacing3=8, justify="left")
+    textw.tag_configure("h1", font=(UI_FONT, 20, "bold"), spacing1=14, spacing3=8)
+    textw.tag_configure("h2", font=(UI_FONT, 18, "bold"), spacing1=12, spacing3=6)
+    textw.tag_configure("h3", font=(UI_FONT, 16, "bold"), spacing1=10, spacing3=5)
+    textw.tag_configure("h4", font=(UI_FONT, 15, "bold"), spacing1=8, spacing3=4)
+    textw.tag_configure("plain", font=(UI_FONT, 14), spacing1=2, spacing3=8, justify="left")
     # Нумерация: БЕЗ отступа, переносы выравниваются после цифры
-    textw.tag_configure("num_mark", font=("SF Pro Display", 14, "bold"),
+    textw.tag_configure("num_mark", font=(UI_FONT, 14, "bold"),
                         foreground=colors["accent"], lmargin1=0, lmargin2=0)
-    textw.tag_configure("num_body", font=("SF Pro Display", 14), spacing1=2, spacing3=5,
+    textw.tag_configure("num_body", font=(UI_FONT, 14), spacing1=2, spacing3=5,
                         lmargin1=0, lmargin2=30, justify="left")
     # Пункты 1-го уровня: отступ 36px целиком (маркер + текст)
-    textw.tag_configure("bul_mark", font=("SF Pro Display", 15, "bold"),
+    textw.tag_configure("bul_mark", font=(UI_FONT, 15, "bold"),
                         foreground=colors["accent"], lmargin1=36, lmargin2=36)
-    textw.tag_configure("bul_body", font=("SF Pro Display", 14), spacing1=2, spacing3=5,
+    textw.tag_configure("bul_body", font=(UI_FONT, 14), spacing1=2, spacing3=5,
                         lmargin1=36, lmargin2=56, justify="left")
     # Вложенные пункты (под вводными строками): отступ 64px
-    textw.tag_configure("bul2_mark", font=("SF Pro Display", 15, "bold"),
+    textw.tag_configure("bul2_mark", font=(UI_FONT, 15, "bold"),
                         foreground=colors["accent"], lmargin1=64, lmargin2=64)
-    textw.tag_configure("bul2_body", font=("SF Pro Display", 14), spacing1=2, spacing3=5,
+    textw.tag_configure("bul2_body", font=(UI_FONT, 14), spacing1=2, spacing3=5,
                         lmargin1=64, lmargin2=84, justify="left")
-    textw.tag_configure("mark", font=("SF Pro Display", 14, "bold"), foreground=colors["accent"])
-    textw.tag_configure("code_lang", font=("SF Pro Display", 11, "bold"),
+    textw.tag_configure("mark", font=(UI_FONT, 14, "bold"), foreground=colors["accent"])
+    textw.tag_configure("code_lang", font=(UI_FONT, 11, "bold"),
                         foreground=colors["accent"], spacing1=8, spacing3=2)
     textw.tag_configure("code", font=("Courier New", 13), background="#0d1117",
                         foreground="#e6edf3", lmargin1=16, lmargin2=16, spacing3=8)
@@ -383,41 +386,62 @@ def render_markdown_to_text(textw, text, colors, wheel_handler=None, table_max=9
 APP_ROOT = None   # ссылка на главное окно для fallback
 
 def get_clipboard_text():
-    """Читает буфер через pbpaste (основной метод) + Tk fallback."""
-    try:
-        # Основной метод: subprocess с коротким таймаутом (на macOS отрабатывает за 10-50мс)
-        proc = subprocess.Popen(['pbpaste'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, _ = proc.communicate(timeout=0.5)
-        text = stdout.decode('utf-8', errors='ignore')
-        if text:
-            return text
-    except Exception as e:
-        print(f"[CLIP] pbpaste error: {e}", flush=True)
+    """Чтение буфера. На macOS — pbpaste с таймаутом + Tk-fallback."""
+    if platform.system() == 'Darwin':
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['pbpaste'], 
+                capture_output=True, 
+                text=True, 
+                timeout=2
+            )
+            if result.returncode == 0 and result.stdout:
+                print(f"[CLIP] pbpaste вернул: {repr(result.stdout[:50])}", flush=True)
+                return result.stdout
+            else:
+                print(f"[CLIP] pbpaste вернул пустой результат или код {result.returncode}", flush=True)
+        except Exception as e:
+            print(f"[CLIP] pbpaste ошибка: {type(e).__name__}: {e}", flush=True)
     
-    # Fallback: Tk clipboard (если pbpaste не сработал)
+    # Fallback: Tk-буфер
     global APP_ROOT
     if APP_ROOT is not None:
         try:
-            return APP_ROOT.clipboard_get()
+            text = APP_ROOT.clipboard_get()
+            if text:
+                print(f"[CLIP] Tk clipboard_get вернул: {repr(text[:50])}", flush=True)
+            return text
         except Exception as e:
-            print(f"[CLIP] Tk clipboard_get error: {e}", flush=True)
+            print(f"[CLIP] Tk clipboard_get ошибка: {e}", flush=True)
+    
     return ""
 
 def set_clipboard_text(text: str):
-    """Записывает в буфер через pbcopy (основной) + Tk fallback."""
-    try:
-        proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
-        proc.communicate(text.encode('utf-8'), timeout=0.5)
-    except Exception as e:
-        print(f"[CLIP] pbcopy error: {e}", flush=True)
-        # Fallback: Tk clipboard
-        global APP_ROOT
-        if APP_ROOT is not None:
-            try:
-                APP_ROOT.clipboard_clear()
-                APP_ROOT.clipboard_append(text)
-            except Exception as e2:
-                print(f"[CLIP] Tk clipboard_append error: {e2}", flush=True)
+    """Запись в буфер. На macOS — только pbcopy (Tk НЕ становится владельцем буфера)."""
+    if platform.system() == 'Darwin':
+        try:
+            import subprocess
+            proc = subprocess.run(
+                ['pbcopy'], 
+                input=text.encode('utf-8'), 
+                timeout=2,
+                check=True
+            )
+            print(f"[CLIP] pbcopy успешно записал {len(text)} символов", flush=True)
+            return
+        except Exception as e:
+            print(f"[CLIP] pbcopy ошибка: {type(e).__name__}: {e}", flush=True)
+    
+    # Windows/Linux или fallback: Tk-буфер
+    global APP_ROOT
+    if APP_ROOT is not None:
+        try:
+            APP_ROOT.clipboard_clear()
+            APP_ROOT.clipboard_append(text)
+            print(f"[CLIP] Tk clipboard_append успешно записал {len(text)} символов", flush=True)
+        except Exception as e:
+            print(f"[CLIP] Tk clipboard_append ошибка: {e}", flush=True)
 
 def attach_visible_selection(text, colors):
     """Видимое выделение + корректное снятие подсветки."""
@@ -1007,7 +1031,7 @@ class ChatArea(ctk.CTkFrame):
         answer_text = tk.Text(
             parent, wrap="word",
             bg=self.colors["bg_bubble_ai"], fg=self.colors["text_primary"],
-            font=("SF Pro Display", 14), borderwidth=0, highlightthickness=0,
+            font=(UI_FONT, 14), borderwidth=0, highlightthickness=0,
             padx=20, pady=12,
             insertbackground=self.colors["bg_bubble_ai"],
             selectbackground=self.colors["accent"], selectforeground="#ffffff",
@@ -1301,15 +1325,23 @@ class ChatArea(ctk.CTkFrame):
 # ОБЛАСТЬ ВВОДА (Чистая и надежная версия)
 # ==========================================
 class InputArea(ctk.CTkFrame):
-    def __init__(self, master, theme: str = "dark", assets: dict = None, on_send=None, **kwargs):
+    def __init__(self, master, theme: str = "dark", assets: dict = None,
+                 on_send=None, on_attach=None, **kwargs):
         super().__init__(master, corner_radius=0, **kwargs)
         self.theme = theme
         self.colors = THEMES[theme]
         self.assets = assets or {}
         self.on_send = on_send
+        self.on_attach = on_attach
         self._build_ui()
     
     def _build_ui(self):
+        
+        # Панель прикреплённых документов (чипы над полем ввода).
+        # Пустой фрейм не занимает места; чипы добавляет refresh_attachments().
+        self.attach_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self.attach_bar.pack(fill="x", padx=20, pady=(6, 0))
+        
         input_frame = ctk.CTkFrame(self, fg_color=self.colors["bg_input"], corner_radius=14)
         input_frame.pack(fill="x", padx=20, pady=12)
         
@@ -1317,7 +1349,7 @@ class InputArea(ctk.CTkFrame):
         self.textbox = tk.Text(
             input_frame, 
             height=3, 
-            font=("SF Pro Display", 15), 
+            font=(UI_FONT, 15), 
             wrap="word",
             bg=self.colors["bg_input"], 
             fg=self.colors["text_primary"],
@@ -1331,6 +1363,20 @@ class InputArea(ctk.CTkFrame):
             relief="flat",
             state="normal"  # Явно разрешаем ввод
         )
+                # Кнопка "+" — загрузка пользовательского документа в базу знаний
+        self.attach_btn = ctk.CTkButton(
+            input_frame, text="+",
+            command=self._handle_attach,
+            width=40, height=40,
+            fg_color="transparent",
+            hover_color=self.colors["border"],
+            border_width=1,
+            border_color=self.colors["border"],
+            text_color=self.colors["accent"],
+            font=("SF Pro Display", 20, "bold"),
+            corner_radius=20,
+        )
+        self.attach_btn.pack(side="left", padx=(12, 8), pady=12)
         self.textbox.pack(side="left", fill="both", expand=True)
         
         # Гарантируем, что поле получает фокус при клике
@@ -1417,9 +1463,62 @@ class InputArea(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         if self.on_send:
             self.on_send(text)
-
-    # ---------- Буфер обмена ----------
     
+    def _handle_attach(self):
+        if self.on_attach:
+            self.on_attach()
+    
+    # ---------- прикреплённые документы ----------
+    def refresh_attachments(self):
+        """Перестраивает чипы: имя файла + число фрагментов + кнопка удаления."""
+        for w in self.attach_bar.winfo_children():
+            w.destroy()
+        try:
+            from document_processor import list_documents
+            docs = list_documents()
+        except Exception as e:
+            print(f"[DOCS] ошибка списка: {e}", flush=True)
+            docs = []
+        for d in docs:
+            chip = ctk.CTkFrame(
+                self.attach_bar,
+                fg_color=self.colors["bg_input"],
+                corner_radius=10,
+                border_width=1,
+                border_color=self.colors["border"],
+            )
+            chip.pack(side="left", padx=(0, 8), pady=2)
+            ctk.CTkLabel(
+                chip, text=f"📎 {d['filename']}",
+                font=(UI_FONT, 12, "bold"),
+                text_color=self.colors["text_primary"],
+            ).pack(side="left", padx=(10, 6), pady=6)
+            ctk.CTkLabel(
+                chip, text=f"{d['chunks']} фр.",
+                font=(UI_FONT, 11),
+                text_color=self.colors["text_secondary"],
+            ).pack(side="left", padx=(0, 8), pady=6)
+            ctk.CTkButton(
+                chip, text="✕",
+                width=22, height=22, corner_radius=11,
+                fg_color="transparent",
+                hover_color="#dc2626",
+                text_color=self.colors["text_secondary"],
+                font=(UI_FONT, 11, "bold"),
+                command=lambda did=d["doc_id"]: self._remove_attachment(did),
+            ).pack(side="left", padx=(0, 6), pady=5)
+
+    def _remove_attachment(self, doc_id):
+        """Удаляет документ из векторной БД и из папки documents/."""
+        try:
+            from document_processor import remove_document
+            ok = remove_document(doc_id)
+            self._flash("Документ удалён из базы знаний" if ok else "Документ не найден", ok=ok)
+        except Exception as e:
+            self._flash(f"Ошибка удаления: {str(e)[:60]}", ok=False)
+        self.refresh_attachments()
+    
+    # ---------- Буфер обмена ----------
     def _flash(self, msg, ok=True):
         color = "#10b981" if ok else "#ef4444"
         self.disclaimer_label.configure(text=msg, text_color=color)
@@ -1537,6 +1636,7 @@ class AviationRAGApp(ctk.CTk):
         self._build_ui()
         self._create_macos_menu()  # ДОБАВЬ ЭТУ СТРОКУ
         self._load_current_chat()
+        self.after(400, lambda: self.input_area.refresh_attachments())
 
     def _global_key_router(self, event):
         """Страховка: ловит Cmd/Ctrl+C,V,X,A на уровне окна, если виджетные bind'ы не сработали."""
@@ -1630,6 +1730,7 @@ class AviationRAGApp(ctk.CTk):
             theme=self.theme,
             assets=self.assets,
             on_send=self._send_message,
+            on_attach=self._attach_document,
             fg_color=self.colors["bg_main"]
         )
         self.input_area.pack(fill="x", side="bottom")
@@ -1706,6 +1807,37 @@ class AviationRAGApp(ctk.CTk):
     def _send_example(self, text: str):
         self.input_area.insert_text(text)
         self.input_area._handle_send()
+    
+    def _attach_document(self):
+        """Открывает диалог выбора файла и запускает обработку в фоне."""
+        path = filedialog.askopenfilename(
+            title="Выберите документ для загрузки в базу знаний",
+            filetypes=[
+                ("Документы", "*.pdf *.docx *.txt *.md *.csv *.xlsx"),
+                ("Все файлы", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        self.input_area.attach_btn.configure(state="disabled")
+        self.chat_area.set_status("● Обрабатываю документ…", self.colors["status_busy"])
+        threading.Thread(target=self._process_document, args=(path,), daemon=True).start()
+    
+    def _process_document(self, path):
+        try:
+            from document_processor import add_document
+            info = add_document(path)
+            msg = f" {info['filename']}: {info['chunks']} фрагментов в базе"
+            self.after(0, lambda: self._doc_done(msg, True))
+        except Exception as e:
+            msg = f" Ошибка документа: {str(e)[:80]}"
+            self.after(0, lambda: self._doc_done(msg, False))
+    
+    def _doc_done(self, msg, ok):
+        self.input_area.attach_btn.configure(state="normal")
+        self.input_area._flash(msg, ok=ok)
+        self.input_area.refresh_attachments()
+        self.chat_area.set_status("● Готов", self.colors["status_ready"])
     
     def _new_chat(self):
         self.chat_manager.create_new_chat()
