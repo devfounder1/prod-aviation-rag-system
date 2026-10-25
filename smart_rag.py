@@ -12,7 +12,16 @@ from hybrid_retriever import HybridRetriever
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
 class SmartRAG:
-    def __init__(self):
+    def __init__(self, model_name: str = "qwen2.5:14b"):
+        print(f"[SmartRAG] 🔧 Инициализация с моделью: {model_name}", flush=True)
+        self.model_name = model_name
+        
+        try:
+            # ... твой существующий код инициализации ...
+            print(f"[SmartRAG] Инициализация завершена успешно", flush=True)
+        except Exception as e:
+            print(f"[SmartRAG] Ошибка инициализации: {e}", flush=True)
+            raise
         # Инициализация векторной базы (Parent-Child)
         self.vs_manager = VectorStoreManager()
         self.vs_manager.load()
@@ -22,7 +31,7 @@ class SmartRAG:
         
         # Инициализация LLM
         self.llm = ChatOpenAI(
-            model=settings.llm_model_name,
+            model=self.model_name,
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             temperature=0.1,

@@ -85,11 +85,6 @@ def _make_selectable_text(parent, colors, wrap="word", bg=None, fg=None,
             sel = text.get("sel.first", "sel.last")
             if sel:
                 set_clipboard_text(sel)
-                try:
-                    text.clipboard_clear()
-                    text.clipboard_append(sel)
-                except Exception:
-                    pass
                 print(f"Скопировано выделение: {sel[:40]}...")
                 text.tag_remove("sel", "1.0", "end")
                 text.tag_remove("hl", "1.0", "end")
@@ -385,45 +380,44 @@ def render_markdown_to_text(textw, text, colors, wheel_handler=None, table_max=9
             textw.bind(seq, wheel_handler)
     return embedded
 
+APP_ROOT = None   # ссылка на главное окно для fallback
+
 def get_clipboard_text():
-    """Получить текст из буфера обмена (работает на всех платформах)"""
+    """Читает буфер через pbpaste (основной метод) + Tk fallback."""
     try:
-        sys_name = platform.system()
-        print(f"[DEBUG] platform.system() = {sys_name}")
-        if sys_name == 'Darwin':  # macOS
-            result = subprocess.run(['pbpaste'], capture_output=True, text=True)
-            if result.returncode != 0:
-                print(f"[DEBUG] pbpaste ошибка: {result.stderr}")
-            return result.stdout
-        elif sys_name == 'Linux':
-            result = subprocess.run(['xclip', '-selection', 'clipboard', '-o'], 
-                                  capture_output=True, text=True)
-            return result.stdout
-        else:  # Windows
-            result = subprocess.run(['clip'], capture_output=True, text=True)
-            return result.stdout
+        # Основной метод: subprocess с коротким таймаутом (на macOS отрабатывает за 10-50мс)
+        proc = subprocess.Popen(['pbpaste'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, _ = proc.communicate(timeout=0.5)
+        text = stdout.decode('utf-8', errors='ignore')
+        if text:
+            return text
     except Exception as e:
-        print(f"[DEBUG] Ошибка чтения буфера: {e}")
-        return ""
+        print(f"[CLIP] pbpaste error: {e}", flush=True)
+    
+    # Fallback: Tk clipboard (если pbpaste не сработал)
+    global APP_ROOT
+    if APP_ROOT is not None:
+        try:
+            return APP_ROOT.clipboard_get()
+        except Exception as e:
+            print(f"[CLIP] Tk clipboard_get error: {e}", flush=True)
+    return ""
 
 def set_clipboard_text(text: str):
-    """Установить текст в буфер обмена"""
+    """Записывает в буфер через pbcopy (основной) + Tk fallback."""
     try:
-        sys_name = platform.system()
-        print(f"[DEBUG] set_clipboard_text: platform = {sys_name}, текст = {repr(text[:30])}")
-        if sys_name == 'Darwin':  # macOS
-            proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
-            proc.communicate(text.encode('utf-8'))
-            print("[DEBUG] pbcopy выполнен")
-        elif sys_name == 'Linux':
-            proc = subprocess.Popen(['xclip', '-selection', 'clipboard'], 
-                                  stdin=subprocess.PIPE)
-            proc.communicate(text.encode('utf-8'))
-        else:  # Windows
-            proc = subprocess.Popen(['clip'], stdin=subprocess.PIPE)
-            proc.communicate(text.encode('utf-8'))
+        proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
+        proc.communicate(text.encode('utf-8'), timeout=0.5)
     except Exception as e:
-        print(f"[DEBUG] Ошибка записи в буфер: {e}")
+        print(f"[CLIP] pbcopy error: {e}", flush=True)
+        # Fallback: Tk clipboard
+        global APP_ROOT
+        if APP_ROOT is not None:
+            try:
+                APP_ROOT.clipboard_clear()
+                APP_ROOT.clipboard_append(text)
+            except Exception as e2:
+                print(f"[CLIP] Tk clipboard_append error: {e2}", flush=True)
 
 def attach_visible_selection(text, colors):
     """Видимое выделение + корректное снятие подсветки."""
@@ -496,6 +490,19 @@ THEMES = {
 
 APP_NAME = "Aviation RAG-System"
 APP_VERSION = "1.0.0"
+
+# СПИСОК ДОСТУПНЫХ МОДЕЛЕЙ (Добавляй сюда любые, которые скачал через ollama pull)
+AVAILABLE_MODELS = {
+    "Qwen 2.5 (14B)": "qwen2.5:14b",
+    "Qwen 2.5 (7B)": "qwen2.5:7b",
+    "Llama 3.1 (8B)": "llama3.1:8b",
+    "Gemma 2 (9B)": "gemma2:9b",
+    "Mistral (7B)": "mistral:7b"
+}
+
+# Модель по умолчанию (должна совпадать с ключом в словаре выше)
+DEFAULT_MODEL_DISPLAY = "Qwen 2.5 (14B)"
+
 CHATS_FILE = "chats_history.json"
 ASSETS_DIR = Path("assets")
 
@@ -981,7 +988,7 @@ class ChatArea(ctk.CTkFrame):
         
         self.model_label = ctk.CTkLabel(
             self.header,
-            text="Gemma2 9B  •  PRL-27СМ RAG",
+            text=f"{DEFAULT_MODEL_DISPLAY}  •  PRL-27СМ RAG",  # ← ИСПРАВЛЕНО ЗДЕСЬ
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=self.colors["text_secondary"]
         )
@@ -1291,7 +1298,7 @@ class ChatArea(ctk.CTkFrame):
         self.model_label.configure(text_color=self.colors["text_secondary"])
 
 # ==========================================
-# ОБЛАСТЬ ВВОДА
+# ОБЛАСТЬ ВВОДА (Чистая и надежная версия)
 # ==========================================
 class InputArea(ctk.CTkFrame):
     def __init__(self, master, theme: str = "dark", assets: dict = None, on_send=None, **kwargs):
@@ -1306,37 +1313,64 @@ class InputArea(ctk.CTkFrame):
         input_frame = ctk.CTkFrame(self, fg_color=self.colors["bg_input"], corner_radius=14)
         input_frame.pack(fill="x", padx=20, pady=12)
         
+        # Создаем текстовое поле с явным указанием state="normal"
         self.textbox = tk.Text(
-            input_frame, height=3, font=("SF Pro Display", 15), wrap="word",
-            bg=self.colors["bg_input"], fg=self.colors["text_primary"],
+            input_frame, 
+            height=3, 
+            font=("SF Pro Display", 15), 
+            wrap="word",
+            bg=self.colors["bg_input"], 
+            fg=self.colors["text_primary"],
             insertbackground=self.colors["text_primary"],
-            selectbackground=self.colors["accent"], selectforeground="#ffffff",
-            borderwidth=0, highlightthickness=0, padx=18, pady=14, relief="flat"
+            selectbackground=self.colors["accent"], 
+            selectforeground="#ffffff",
+            borderwidth=0, 
+            highlightthickness=0, 
+            padx=18, 
+            pady=14, 
+            relief="flat",
+            state="normal"  # Явно разрешаем ввод
         )
         self.textbox.pack(side="left", fill="both", expand=True)
         
+        # Гарантируем, что поле получает фокус при клике
+        def _force_focus(e):
+            try:
+                self.textbox.focus_force()
+                self.textbox.tk_focusFollowsMouse()
+            except Exception:
+                pass
+        self.textbox.bind("<Button-1>", _force_focus)
+        
+        # Отправка по Enter (без Shift)
         self.textbox.bind("<Return>", self._on_enter)
         self.textbox.bind("<Shift-Return>", lambda e: None)
         
-        # Явные bind'ы — они работают на macOS, когда <Key> не срабатывает для Cmd+X
+        # Явные привязки для macOS (Cmd+C/V/X/A)
         self.textbox.bind("<Command-v>", self._paste)
         self.textbox.bind("<Control-v>", self._paste)
         self.textbox.bind("<<Paste>>", self._paste)
+        
         self.textbox.bind("<Command-c>", self._copy)
         self.textbox.bind("<Control-c>", self._copy)
         self.textbox.bind("<<Copy>>", self._copy)
+        
         self.textbox.bind("<Command-x>", self._cut)
         self.textbox.bind("<Control-x>", self._cut)
         self.textbox.bind("<<Cut>>", self._cut)
+        
         self.textbox.bind("<Command-a>", self._select_all)
         self.textbox.bind("<Control-a>", self._select_all)
-        # self.textbox.bind("<Key>", self._on_raw_key)
+        
+        # Контекстное меню по правому клику
         self.textbox.bind("<Button-3>", self._show_context_menu)
         
+        # Плейсхолдер
         self.textbox.insert("1.0", "Message RAG Assistant...")
         self.textbox.bind("<FocusIn>", self._on_focus_in)
         self.textbox.bind("<FocusOut>", self._on_focus_out)
         
+        # Кнопка отправки
         send_icon = self.assets.get("send")
         send_btn = ctk.CTkButton(
             input_frame, text="", image=send_icon if send_icon else None,
@@ -1353,23 +1387,28 @@ class InputArea(ctk.CTkFrame):
             font=ctk.CTkFont(size=12), text_color=self.colors["text_secondary"]
         )
         self.disclaimer_label.pack(side="left", padx=20, pady=(0, 12))
-    
-    # ---------- служебные ----------
-    def _clear_placeholder(self):
-        if self.textbox.get("1.0", "end-1c").strip() == "Message RAG Assistant...":
-            self.textbox.delete("1.0", "end")
+
+    # ---------- Обработчики событий ----------
     
     def _on_focus_in(self, event):
-        self._clear_placeholder()
+        # Принудительно убеждаемся, что поле активно
+        try:
+            self.textbox.configure(state="normal")
+            if self.textbox.get("1.0", "end-1c").strip() == "Message RAG Assistant...":
+                self.textbox.delete("1.0", "end")
+        except Exception as e:
+            print(f"[FOCUS] Ошибка в _on_focus_in: {e}", flush=True)
     
     def _on_focus_out(self, event):
         if not self.textbox.get("1.0", "end-1c").strip():
             self.textbox.insert("1.0", "Message RAG Assistant...")
     
     def _on_enter(self, event):
-        if not event.state & 1:
+        # Если Shift не нажат, отправляем сообщение
+        if not (event.state & 1):  
             self._handle_send()
             return "break"
+        return None
     
     def _handle_send(self):
         text = self.textbox.get("1.0", "end-1c").strip()
@@ -1378,39 +1417,45 @@ class InputArea(ctk.CTkFrame):
         self.textbox.delete("1.0", "end")
         if self.on_send:
             self.on_send(text)
+
+    # ---------- Буфер обмена ----------
     
+    def _flash(self, msg, ok=True):
+        color = "#10b981" if ok else "#ef4444"
+        self.disclaimer_label.configure(text=msg, text_color=color)
+        self.after(1500, lambda: self.disclaimer_label.configure(
+            text="Модель может ошибаться. Проверяйте важную информацию.",
+            text_color=self.colors["text_secondary"]))
+
     def _paste(self, event=None):
-        print("[DEBUG] === _paste вызван ===")
+        print("[PASTE] === _paste вызван ===", flush=True)
         text = get_clipboard_text()
-        print(f"[DEBUG] get_clipboard_text вернул: {repr(text[:50] if text else 'ПУСТО')}")
-        if not text:
-            try:
-                text = self.textbox.clipboard_get()
-                print(f"[DEBUG] Tk clipboard_get вернул: {repr(text[:50] if text else 'ПУСТО')}")
-            except Exception as e:
-                print(f"[DEBUG] Tk clipboard_get ошибка: {e}")
-                text = ""
-        
+        print(f"[PASTE] get_clipboard_text вернул: {repr(text[:50] if text else 'ПУСТО')}", flush=True)
         if text:
             current = self.textbox.get("1.0", "end-1c").strip()
             if current == "Message RAG Assistant...":
                 self.textbox.delete("1.0", "end")
             self.textbox.insert("insert", text)
-            print("[DEBUG] Текст успешно вставлен!")
+            self._flash(f"Вставлено символов: {len(text)}")
+            print("[PASTE] Текст вставлен", flush=True)
         else:
-            print("[DEBUG] Текст для вставки не найден!")
+            self._flash("Буфер обмена пуст", ok=False)
+            print("[PASTE] Буфер пуст", flush=True)
         return "break"
-    
+
     def _copy(self, event=None):
-        print("[DEBUG] === _copy вызван ===")
+        print("[COPY] === _copy вызван ===", flush=True)
         try:
             selection = self.textbox.get("sel.first", "sel.last")
-            print(f"[DEBUG] Выделение: {repr(selection[:50] if selection else 'ПУСТО')}")
+            print(f"[COPY] Выделение: {repr(selection[:50] if selection else 'ПУСТО')}", flush=True)
             if selection:
                 set_clipboard_text(selection)
-                print("[DEBUG] Текст успешно скопирован!")
-        except tk.TclError as e:
-            print(f"[DEBUG] _copy ошибка (нет выделения): {e}")
+                self._flash(f"Скопировано символов: {len(selection)}")
+                print("[COPY] Скопировано", flush=True)
+            else:
+                self._flash("Нет выделения", ok=False)
+        except tk.TclError:
+            self._flash("Нет выделения", ok=False)
         return "break"
     
     def _cut(self, event=None):
@@ -1440,32 +1485,8 @@ class InputArea(ctk.CTkFrame):
         finally:
             menu.grab_release()
 
-    def _on_raw_key(self, event):
-        """Перехват Cmd/Ctrl+V, C, X, A на уровне сырых нажатий"""
-        kl = event.keysym.lower()
-        is_cmd = bool(event.state & 0x40) or bool(event.state & 0x04)
-        
-        # Навигация (с Shift и без) — пропускаем
-        if kl in ('left', 'right', 'up', 'down', 'home', 'end',
-                  'prior', 'next', 'page_up', 'page_down'):
-            return None
-        
-        # Cmd/Ctrl + горячие клавиши
-        if is_cmd:
-            if kl == 'v':
-                return self._paste()
-            if kl == 'c':
-                return self._copy()
-            if kl == 'x':
-                return self._cut()
-            if kl == 'a':
-                return self._select_all()
-            return "break"
-        
-        # Обычные клавиши — не трогаем
-        return None
-
-    # ---------- прочее ----------
+    # ---------- Прочее ----------
+    
     def set_theme(self, theme: str):
         self.theme = theme
         self.colors = THEMES[theme]
@@ -1486,12 +1507,19 @@ class AviationRAGApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
+        global APP_ROOT
+        APP_ROOT = self
+        
         self.title(f"{APP_NAME} v{APP_VERSION}")
         self.geometry("1400x900")
         self.minsize(1100, 700)
         
         self.theme = "dark"
         self.colors = THEMES[self.theme]
+        
+        # Текущая выбранная модель
+        self.current_model_display = DEFAULT_MODEL_DISPLAY
+        self.current_model_ollama = AVAILABLE_MODELS[self.current_model_display]
         
         self.assets = self._load_assets()
         
@@ -1606,6 +1634,16 @@ class AviationRAGApp(ctk.CTk):
         )
         self.input_area.pack(fill="x", side="bottom")
         
+        # При клике на пустое место возвращаем фокус на поле ввода
+        def _restore_focus_on_click(e):
+            try:
+                if self.focus_get() is None or not isinstance(self.focus_get(), tk.Text):
+                    self.input_area.textbox.focus_force()
+            except Exception:
+                pass
+        
+        self.bind("<Button-1>", _restore_focus_on_click, add="+")
+        
         # БЕЗОПАСНАЯ глобальная привязка прокрутки к главному окну
         self.bind("<MouseWheel>", self._global_mousewheel)
         self.bind("<Button-4>", self._global_mousewheel)
@@ -1712,20 +1750,73 @@ class AviationRAGApp(ctk.CTk):
     def _show_settings(self):
         win = ctk.CTkToplevel(self)
         win.title("Настройки")
-        win.geometry("450x380")
+        win.geometry("450x560")
         win.resizable(False, False)
         win.configure(fg_color=self.colors["bg_sidebar"])
         win.transient(self)
+        win.attributes("-topmost", True)
         
         ctk.CTkLabel(
-            win,
-            text="Настройки системы",
+            win, text="Настройки системы",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=self.colors["text_primary"]
-        ).pack(pady=30)
+        ).pack(pady=(25, 10))
+        
+        ctk.CTkLabel(
+            win, text="Выберите LLM модель:",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=self.colors["text_primary"]
+        ).pack(pady=(10, 5))
+        
+        # Статус создаём ДО комбобокса
+        status_lbl = ctk.CTkLabel(
+            win, text=f"Активная: {self.current_model_display}",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=self.colors["status_ready"]
+        )
+        
+        def apply_model(chosen=None):
+            """Применяет модель. chosen приходит из ComboBox напрямую."""
+            if chosen is None or chosen not in AVAILABLE_MODELS:
+                chosen = model_var.get()
+            if chosen not in AVAILABLE_MODELS:
+                return
+            self.current_model_display = chosen
+            self.current_model_ollama = AVAILABLE_MODELS[chosen]
+            self.chat_area.model_label.configure(
+                text=f"{chosen}  •  PRL-27СМ RAG")
+            self.rag_system = None   # пересоздастся с новой моделью
+            status_lbl.configure(text=f"Применена: {chosen}")
+            print(f"[DEBUG] Модель переключена: {chosen} -> {self.current_model_ollama}", flush=True)
+        
+        model_var = ctk.StringVar(value=self.current_model_display)
+        model_combo = ctk.CTkComboBox(
+            win,
+            values=list(AVAILABLE_MODELS.keys()),
+            variable=model_var,
+            command=apply_model,     # применение СРАЗУ при выборе
+            font=ctk.CTkFont(size=14),
+            fg_color=self.colors["bg_input"],
+            text_color=self.colors["text_primary"],
+            dropdown_fg_color=self.colors["bg_input"],
+            dropdown_text_color=self.colors["text_primary"],
+        )
+        model_combo.pack(pady=5, padx=30, fill="x")
+        model_combo.set(self.current_model_display)
+        status_lbl.pack(pady=(8, 0))
+        
+        ctk.CTkButton(
+            win, text="Применить и закрыть",
+            command=lambda: self._close_settings(win, apply_model),
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["accent_hover"],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=40,
+        ).pack(pady=18, padx=30, fill="x")
+        
+        ctk.CTkFrame(win, height=2, fg_color=self.colors["border"]).pack(fill="x", padx=20, pady=8)
         
         info = (
-            "Модель: Gemma2 9B (Ollama)\n"
             "База: PRL-27СМ Documentation\n"
             "Поиск: Hybrid (BM25 + Vector + RRF)\n"
             "Реранкер: BAAI/bge-reranker-v2-m3\n"
@@ -1734,14 +1825,45 @@ class AviationRAGApp(ctk.CTk):
             "Query Rewriting: Enabled\n\n"
             f"Версия: {APP_VERSION}"
         )
-        
         ctk.CTkLabel(
-            win,
-            text=info,
-            font=ctk.CTkFont(size=13),
-            text_color=self.colors["text_primary"],
-            justify="left"
-        ).pack(pady=20)
+            win, text=info, font=ctk.CTkFont(size=13),
+            text_color=self.colors["text_primary"], justify="left"
+        ).pack(pady=10, padx=25, anchor="w")
+        
+        # Красный крестик = безопасное закрытие
+        win.protocol("WM_DELETE_WINDOW", lambda: self._close_settings(win, None))
+    
+    def _close_settings(self, win, apply_fn=None):
+        """Безопасное закрытие настроек + надёжный возврат фокуса."""
+        if apply_fn is not None:
+            try:
+                apply_fn()
+            except Exception as e:
+                print(f"[DEBUG] Ошибка применения модели: {e}", flush=True)
+        
+        try:
+            win.grab_release()
+        except Exception:
+            pass
+        win.destroy()
+        
+        # ЖДЁМ 100мс, пока окно полностью уничтожится, потом возвращаем фокус
+        self.after(100, self._restore_focus_after_modal)
+    
+    def _restore_focus_after_modal(self):
+        """Надёжный возврат фокуса после закрытия модального окна."""
+        try:
+            # Поднимаем главное окно и textbox
+            self.lift()
+            self.input_area.textbox.lift()
+            self.input_area.textbox.focus_force()
+            # Принудительно активируем поле
+            self.input_area.textbox.configure(state="normal")
+            # Ещё раз через 50мс для гарантии
+            self.after(50, lambda: self.input_area.textbox.focus_force())
+            print("[FOCUS] Фокус восстановлен на textbox", flush=True)
+        except Exception as e:
+            print(f"[FOCUS] Ошибка восстановления: {e}", flush=True)
     
     def _load_current_chat(self):
         chat = self.chat_manager.get_current_chat()
@@ -1780,21 +1902,35 @@ class AviationRAGApp(ctk.CTk):
         threading.Thread(target=self._process, args=(user_input,), daemon=True).start()
     
     def _process(self, user_input: str):
+        print(f"[DEBUG] === _process начался ===", flush=True)
+        print(f"[DEBUG] Активная модель: {self.current_model_display} ({self.current_model_ollama})", flush=True)
+        
         try:
             if self.rag_system is None:
+                print(f"[DEBUG] rag_system is None, создаю SmartRAG с моделью: {self.current_model_ollama}", flush=True)
                 self.chat_area.set_status("● Загрузка модели...", self.colors["status_busy"])
-                self.rag_system = SmartRAG()
+                self.rag_system = SmartRAG(model_name=self.current_model_ollama)
+                print(f"[DEBUG] SmartRAG создан успешно", flush=True)
+            else:
+                print(f"[DEBUG] SmartRAG уже существует, переиспользую", flush=True)
             
+            print(f"[DEBUG] Начинаю query...", flush=True)
             self.chat_area.set_status("● Поиск в базе...", self.colors["status_busy"])
             response = self.rag_system.query(user_input)
+            print(f"[DEBUG] query завершился, ответ получен (длина: {len(response)})", flush=True)
+            
             clean = response.replace("[С поиском]:\n", "").replace("[Без поиска]: ", "")
             
             self.after(0, self.chat_area.add_message, "assistant", clean)
             self.chat_manager.add_message("assistant", clean)
             self.chat_area.set_status("● Готов", self.colors["status_ready"])
             self.is_processing = False
+            print(f"[DEBUG] === _process завершился успешно ===", flush=True)
             
         except Exception as e:
+            import traceback
+            print(f"[DEBUG] ОШИБКА в _process: {type(e).__name__}: {e}", flush=True)
+            print(f"[DEBUG] Traceback:\n{traceback.format_exc()}", flush=True)
             err = f"Ошибка: {str(e)}"
             self.after(0, self.chat_area.add_message, "assistant", err)
             self.chat_area.set_status("● Ошибка", self.colors["status_error"])
@@ -1802,6 +1938,7 @@ class AviationRAGApp(ctk.CTk):
 
 
 if __name__ == "__main__":
+    print("=== Aviation RAG запущен ===", flush=True)
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
     app = AviationRAGApp()
