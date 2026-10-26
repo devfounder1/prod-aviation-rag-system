@@ -41,11 +41,12 @@ class SmartRAG:
         # 4. Промпт для РОУТЕРА
         self.router_prompt = ChatPromptTemplate.from_messages([
             ("system", """Ты — BUTUZIK.AI - диспетчер технической поддержки авиационного оборудования.
-Проанализируй вопрос пользователя и определи, нужно ли искать ответ в технической базе знаний.
+Проанализируй вопрос и определи, где искать ответ.
 
 ПРАВИЛА:
-- Если вопрос касается оборудования, шкафов (например, 276ГГ02, 276ЦЦ02), плат (МКУ, УМИ, ПОИ), протоколов, инструкций, схем, кодов ошибок или любых технических терминов — ответь строго одним словом: SEARCH
-- Если это приветствие, благодарность, вопрос не по теме (погода, код на Python, общие фразы) — ответь строго одним словом: CHAT
+- Если вопрос про ЗАГРУЖЕННЫЙ пользователем файл/документ ("что в файле", "в документе, который я загрузил", "опиши содержимое документа", "а в файле ...") — ответь строго одним словом: USERDOC
+- Если вопрос касается оборудования, шкафов (276ГГ02, 276ЦЦ02), плат (МКУ, УМИ, ПОИ), протоколов, инструкций, схем, кодов ошибок или технических терминов — ответь строго одним словом: SEARCH
+- Если это приветствие, благодарность или вопрос не по теме — ответь строго одним словом: CHAT
 
 Не пиши ничего кроме этого слова."""),
             ("human", "{question}")
@@ -78,10 +79,12 @@ class SmartRAG:
         ])
 
     def route(self, question: str) -> str:
-        """Определяет интент: SEARCH или CHAT"""
         chain = self.router_prompt | self.llm
         response = chain.invoke({"question": question}).content.strip().upper()
-        return "SEARCH" if "SEARCH" in response else "CHAT"
+        for intent in ("USERDOC", "SEARCH", "CHAT"):
+            if intent in response:
+                return intent
+        return "CHAT"
 
     def rewrite_query(self, question: str) -> str:
         """Переформулирует человеческий вопрос в строгий технический поисковый запрос."""
@@ -108,11 +111,11 @@ class SmartRAG:
         rewritten = chain.invoke({"question": question}).content.strip()
         return rewritten
 
-    def _get_user_context(self, question: str) -> str:
+    def _get_user_context(self, question: str, chat_id=None) -> str:
         """Контекст из документов, загруженных пользователем (кнопка '+')."""
         try:
             from document_processor import retrieve_user_context
-            ctx = retrieve_user_context(question, k=4)
+            ctx = retrieve_user_context(question, k=4, chat_id=chat_id)
             if ctx:
                 print(f"[SmartRAG] Контекст из пользовательских документов: {len(ctx)} симв.", flush=True)
             return ctx or ""
@@ -120,15 +123,24 @@ class SmartRAG:
             print(f"[SmartRAG] пользовательские документы недоступны: {e}", flush=True)
             return ""
 
-    def query(self, question: str) -> str:
+    def query(self, question: str, chat_id=None) -> str:
         """Главный метод пайплайна: Self-RAG + приоритет пользовательских документов."""
         print(f"\nВопрос: '{question}'", flush=True)
+        user_ctx = self._get_user_context(question, chat_id)
         
         # 0. Приоритетный контекст из загруженных пользователем документов
         user_ctx = self._get_user_context(question)
         
         intent = self.route(question)
         print(f"Интент модели: {intent}", flush=True)
+        
+        if intent == "USERDOC":
+            if user_ctx:
+                chain = self.generator_prompt | self.llm
+                response = chain.invoke({"context": user_ctx, "question": question})
+                return f"[С поиском]:\n{response.content}"
+            return ("[Без поиска]: В этом чате нет загруженных документов. "
+                    "Нажмите «+» рядом с полем ввода, чтобы прикрепить файл.")
         
         # CHAT без пользовательских документов — обычный ассистент
         if intent == "CHAT" and not user_ctx:

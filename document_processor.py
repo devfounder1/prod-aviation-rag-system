@@ -190,7 +190,7 @@ class UserDocStore:
 # ==========================================
 # ПУБЛИЧНОЕ API
 # ==========================================
-def add_document(path, progress=print):
+def add_document(path, chat_id="global", progress=print):
     cfg = load_config()["user_docs"]
     path = Path(path)
     progress(f"[DOCS] Парсинг {path.name}…")
@@ -209,36 +209,86 @@ def add_document(path, progress=print):
     chunks = chunk_text(text, cfg.get("chunk_size", 800), cfg.get("chunk_overlap", 150))
 
     store = UserDocStore()
-    removed = store.enforce_limit(cfg.get("max_docs", 1))
-    if removed:
-        progress(f"[DOCS] Лимит {cfg['max_docs']} документ: старый удалён")
+    # лимит теперь PER-CHAT: вытесняем самый старый документ именно этого чата
+    ids_in_chat = sorted(
+        {m["doc_id"] for m in store.coll.get(where={"chat_id": chat_id}, include=["metadatas"])["metadatas"]},
+    ) if store.coll.get(where={"chat_id": chat_id}, include=["metadatas"])["ids"] else []
+    while len(ids_in_chat) >= cfg.get("max_docs", 1):
+        old = ids_in_chat.pop(0)
+        store.coll.delete(where={"doc_id": old})
+        progress(f"[DOCS] Лимит чата: старый документ {old} удалён")
 
     progress(f"[DOCS] Эмбеддинги для {len(chunks)} фрагментов…")
     emb = _Embedder.embed_docs(chunks)
 
     doc_id = f"doc_{int(time.time() * 1000)}"
-    store.add(doc_id, dest.name, chunks, emb)
-    progress(f"[DOCS] Готово: {dest.name} -> {len(chunks)} фрагментов")
+    store.coll.add(
+        ids=[f"{doc_id}_{i}" for i in range(len(chunks))],
+        embeddings=emb,
+        documents=chunks,
+        metadatas=[{"doc_id": doc_id, "filename": dest.name, "chunk": i,
+                    "uploaded_at": int(time.time()),
+                    "chat_id": chat_id, "pending": 1} for i in range(len(chunks))],
+    )
+    progress(f"[DOCS] Готово: {dest.name} -> {len(chunks)} фрагментов (чат {chat_id})")
     return {"doc_id": doc_id, "filename": dest.name, "chunks": len(chunks)}
 
-def retrieve_user_context(query, k=None):
-    """Возвращает готовый текстовый контекст из пользовательских документов или ''."""
+def retrieve_user_context(query, k=None, chat_id=None):
+    """Контекст только из документов указанного чата."""
     cfg = load_config()["user_docs"]
     k = k or cfg.get("top_k", 4)
     store = UserDocStore()
     if store.count() == 0:
         return ""
     vec = _Embedder.embed_query(query)
-    res = store.query(vec, k)
+    where = {"chat_id": chat_id} if chat_id else None
+    res = store.coll.query(query_embeddings=[vec], n_results=k, where=where,
+                           include=["documents", "metadatas", "distances"]) if where \
+        else store.coll.query(query_embeddings=[vec], n_results=k,
+                              include=["documents", "metadatas", "distances"])
     parts = []
     for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
-        if dist is not None and dist > 0.75:      # косинусное расстояние: отсечка мусора
+        if dist is not None and dist > 0.75:
             continue
         parts.append(f"[Источник: {meta['filename']}, фрагмент {meta['chunk'] + 1}]\n{doc}")
     return "\n\n".join(parts)
 
-def list_documents():
-    return UserDocStore().list_docs()
+def list_documents(chat_id=None, pending_only=False):
+    """Список документов: всех / чата / только ещё не отправленных (pending)."""
+    store = UserDocStore()
+    if chat_id and pending_only:
+        where = {"$and": [{"chat_id": chat_id}, {"pending": 1}]}
+    elif chat_id:
+        where = {"chat_id": chat_id}
+    elif pending_only:
+        where = {"pending": 1}
+    else:
+        where = None
+    res = store.coll.get(where=where, include=["metadatas"]) if where \
+        else store.coll.get(include=["metadatas"])
+    docs = {}
+    for m in res["metadatas"]:
+        d = docs.setdefault(m["doc_id"], {
+            "doc_id": m["doc_id"], "filename": m["filename"], "chunks": 0,
+            "uploaded_at": m.get("uploaded_at", 0),
+            "chat_id": m.get("chat_id"), "pending": m.get("pending", 0)})
+        d["chunks"] += 1
+    return sorted(docs.values(), key=lambda x: x["uploaded_at"])
+
+def consume_documents(chat_id):
+    """Помечает pending-документы чата как отправленные (pending=0). Возвращает имена файлов."""
+    store = UserDocStore()
+    res = store.coll.get(where={"$and": [{"chat_id": chat_id}, {"pending": 1}]},
+                         include=["metadatas"])
+    if not res["ids"]:
+        return []
+    new_metas = []
+    for m in res["metadatas"]:
+        m2 = dict(m)
+        m2["pending"] = 0
+        new_metas.append(m2)
+    store.coll.update(ids=res["ids"], metadatas=new_metas)
+    return sorted({m["filename"] for m in res["metadatas"]})
 
 def remove_document(doc_id: str, delete_file: bool = True) -> bool:
     """Удаляет документ из ChromaDB и (опционально) оригинал из documents/."""
