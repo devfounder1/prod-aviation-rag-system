@@ -8,16 +8,12 @@ import platform
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
 
-# Попытка импорта процессора документов
 try:
     from document_processor import add_document, list_documents
 except ImportError:
     add_document = None
     list_documents = None
 
-# ==========================================
-# ЦВЕТА И КОНСТАНТЫ
-# ==========================================
 THEME = {
     "bg_main": "#1a1f2e",
     "bg_sidebar": "#0f1419",
@@ -35,7 +31,7 @@ THEME = {
 APP_NAME = "Aviation RAG-System"
 APP_VERSION = "1.0.0"
 CHATS_FILE = "chats_history.json"
-ASSETS_DIR = Path("assets")
+ASSETS_DIR = Path(__file__).parent / "assets"
 
 AVAILABLE_MODELS = {
     "Qwen 2.5 (14B)": "qwen2.5:14b",
@@ -46,47 +42,34 @@ AVAILABLE_MODELS = {
 }
 DEFAULT_MODEL_DISPLAY = "Qwen 2.5 (14B)"
 
-
-# ==========================================
-# ЗАГРУЗКА ASSETS
-# ==========================================
 def load_assets():
-    """Загружает все изображения из папки assets"""
     assets = {}
+    print(f"[ASSETS] Path: {ASSETS_DIR}", flush=True)
     
-    # Логотип
     logo_path = ASSETS_DIR / "logo.png"
     if logo_path.exists():
         assets["logo"] = str(logo_path)
     
-    # Аватарки
     for name in ["assistant", "user"]:
         path = ASSETS_DIR / "avatars" / f"{name}.png"
         if path.exists():
             assets[name] = str(path)
     
-    # Иконки
     for name in ["clear", "new_chat", "send", "settings"]:
         path = ASSETS_DIR / "icons" / f"{name}.png"
         if path.exists():
             assets[name] = str(path)
     
-    # Фон
     bg_path = ASSETS_DIR / "background.png"
     if bg_path.exists():
         assets["background"] = str(bg_path)
     
-    # Иконка приложения
     icon_path = ASSETS_DIR / "icon.png"
     if icon_path.exists():
         assets["icon"] = str(icon_path)
     
     return assets
 
-
-# ==========================================
-# CHAT MANAGER
-# ==========================================
 class ChatManager:
     def __init__(self, filename: str = CHATS_FILE):
         self.filename = filename
@@ -149,10 +132,6 @@ class ChatManager:
         if chat_id in self.chats:
             self.current_chat_id = chat_id
 
-
-# ==========================================
-# ГЛАВНОЕ ПРИЛОЖЕНИЕ
-# ==========================================
 class AviationRAGApp:
     def __init__(self, page: ft.Page):
         self.page = page
@@ -167,9 +146,11 @@ class AviationRAGApp:
         
         self.chat_list_controls = {}
         self.file_picker = None
+        self.attachments_row = None  # Для хранения строки с чипами файлов
         
         self._setup_page()
         self._build_ui()
+        self.page.update()
         self._load_current_chat()
     
     def _setup_page(self):
@@ -184,10 +165,8 @@ class AviationRAGApp:
         self.page.fonts = {
             "main": "SF Pro Display" if platform.system() == "Darwin" else "Segoe UI",
         }
-        self.page.padding = 0
         self.page.spacing = 0
         
-        # Устанавливаем иконку приложения если есть
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
 
@@ -199,12 +178,10 @@ class AviationRAGApp:
         )
         btn_text_style = ft.ButtonStyle(color=self.theme["text_primary"])
         
-        # Логотип в сайдбаре
         logo_control = None
         if "logo" in self.assets:
             logo_control = ft.Image(src=self.assets["logo"], height=60, width=60)
         
-        # --- САЙДБАР ---
         self.sidebar = ft.Container(
             content=ft.Column([
                 ft.Container(
@@ -238,7 +215,6 @@ class AviationRAGApp:
             bgcolor=self.theme["bg_sidebar"],
         )
         
-        # --- ВЕРХНЯЯ ПАНЕЛЬ ---
         self.status_text = ft.Text("● Готов", size=13, weight=ft.FontWeight.BOLD, color=self.theme["status_ready"])
         self.model_label = ft.Text(f"{self.current_model_display}  •  PRL-27СМ RAG", size=14, weight=ft.FontWeight.BOLD, color=self.theme["text_secondary"])
         
@@ -247,7 +223,6 @@ class AviationRAGApp:
             padding=ft.padding.symmetric(horizontal=20, vertical=12),
         )
         
-        # --- ОБЛАСТЬ СООБЩЕНИЙ ---
         self.messages_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=12)
         
         self.welcome = ft.Container(
@@ -272,7 +247,6 @@ class AviationRAGApp:
             expand=True,
         )
         
-        # --- ПОЛЕ ВВОДА ---
         self.input_field = ft.TextField(
             hint_text="Message RAG Assistant...",
             multiline=True,
@@ -287,37 +261,41 @@ class AviationRAGApp:
             expand=True,
         )
         
-        # File picker для загрузки файлов
-        self.file_picker = ft.FilePicker(
-            on_result=self._on_file_pick_result,
-            dialog_title="Выберите документ для загрузки",
-            allowed_extensions=["pdf", "docx", "txt", "md", "csv", "xlsx"],
-            allow_multiple=False
-        )
-        
+        self.file_picker = ft.FilePicker(on_result=self._on_file_pick_result)
         self.page.overlay.append(self.file_picker)
         
+        # ИСПРАВЛЕНО: Структура поля ввода теперь Column, чтобы чипы файлов были НАД строкой ввода
+        self.attachments_row = ft.Row([], wrap=True, spacing=4, visible=False)
+        
         self.input_area = ft.Container(
-            content=ft.Row([
-                ft.IconButton(
-                    icon=ft.Icons.ADD_CIRCLE_OUTLINE, 
-                    tooltip="Прикрепить документ", 
-                    on_click=lambda e: self.file_picker.pick_files(),
-                    style=ft.ButtonStyle(color=self.theme["accent"]),
-                ),
-                self.input_field,
-                ft.IconButton(
-                    icon=self.assets.get("send", ft.Icons.SEND), 
-                    tooltip="Отправить", 
-                    on_click=self._handle_send, 
-                    style=ft.ButtonStyle(bgcolor=self.theme["accent"], color="#ffffff")
-                ),
-            ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.END),
+            content=ft.Column([
+                self.attachments_row,
+                ft.Row([
+                    ft.IconButton(
+                        icon=ft.Icons.ADD_CIRCLE_OUTLINE, 
+                        tooltip="Прикрепить документ", 
+                        on_click=lambda e: self.file_picker.pick_files(
+                            dialog_title="Выберите документ",
+                            allowed_extensions=["pdf", "docx", "txt", "md", "csv", "xlsx"],
+                            allow_multiple=False,
+                        ),
+                        icon_size=28,
+                        style=ft.ButtonStyle(color=self.theme["accent"]),
+                    ),
+                    self.input_field,
+                    ft.IconButton(
+                        icon=ft.Icons.SEND, 
+                        tooltip="Отправить", 
+                        on_click=self._handle_send, 
+                        icon_size=24,
+                        style=ft.ButtonStyle(bgcolor=self.theme["accent"], color="#ffffff"),
+                    ),
+                ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.END)
+            ], spacing=8),
             padding=ft.padding.all(20),
             bgcolor=self.theme["bg_main"],
         )
         
-        # --- СБОРКА СТРАНИЦЫ ---
         self.page.add(
             ft.Row([
                 self.sidebar,
@@ -327,7 +305,6 @@ class AviationRAGApp:
         )
 
     def _on_file_pick_result(self, e: ft.FilePickerResultEvent):
-        """Обработчик результата выбора файла"""
         if e.files:
             file_path = e.files[0].path
             self.status_text.value = "● Обрабатываю документ..."
@@ -389,7 +366,6 @@ class AviationRAGApp:
                         ft.Chip(
                             label=ft.Text(name, size=12, color="#dbeafe"),
                             bgcolor="#1e3a8a",
-                            checkmark_color="#dbeafe",
                             padding=6,
                         )
                     )
@@ -400,24 +376,24 @@ class AviationRAGApp:
                 padding=16,
                 border_radius=20,
             )
+            avatar = ft.Image(src=self.assets["user"], width=40, height=40) if "user" in self.assets else ft.Text("👤", size=28)
+            
             row = ft.Row([
                 ft.Container(expand=True), 
-                ft.Text("👤", size=28) if "user" not in self.assets else ft.Image(src=self.assets["user"], width=40, height=40),
-                bubble
+                bubble,
+                avatar,
             ], vertical_alignment=ft.CrossAxisAlignment.START)
+            
         else:
-            # Markdown с поддержкой копирования кода
             md = ft.Markdown(
                 value=content,
                 selectable=True,
                 extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-                code_theme="vs-dark",
             )
             
-            # Блок с источниками если есть
             source_controls = []
             if sources:
-                source_text = ", ".join(sources[:3])  # Показываем первые 3 источника
+                source_text = ", ".join(sources[:3])
                 if len(sources) > 3:
                     source_text += f" и еще {len(sources) - 3}"
                 source_controls.append(
@@ -427,22 +403,30 @@ class AviationRAGApp:
                     )
                 )
             
+            # ИСПРАВЛЕНО: bubble теперь корректно растягивается по ширине для таблиц
             bubble = ft.Container(
-                content=ft.Column([md] + source_controls, spacing=4),
+                content=ft.Column([
+                    ft.Container(content=md, expand=True),
+                ] + source_controls, spacing=4),
                 bgcolor=self.theme["bg_bubble_ai"],
                 padding=16,
                 border_radius=20,
-                expand=True
+                expand=True,
             )
-            row = ft.Row([
-                ft.Text("🤖", size=28) if "assistant" not in self.assets else ft.Image(src=self.assets["assistant"], width=40, height=40),
-                bubble
-            ], vertical_alignment=ft.CrossAxisAlignment.START)
+            avatar = ft.Image(src=self.assets["assistant"], width=40, height=40) if "assistant" in self.assets else ft.Text("🤖", size=28)
+            
+            row = ft.Row(
+                [
+                    avatar,
+                    bubble,
+                ],
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                expand=True, # Заставляет Row занимать всю доступную ширину
+            )
         
         self.messages_column.controls.append(row)
         self.welcome.visible = False
         self.page.update()
-        # Прокрутка вниз
         self.messages_column.scroll_to(offset=-1, duration=300)
 
     def _handle_send(self, e):
@@ -473,7 +457,6 @@ class AviationRAGApp:
         self._handle_send(None)
 
     def _handle_attach(self, e):
-        # Теперь вызывается через file_picker.pick_files()
         pass
 
     def _process_document(self, file_path: str):
@@ -494,9 +477,39 @@ class AviationRAGApp:
             self.page.show_snack_bar(ft.SnackBar(ft.Text(f"❌ Ошибка: {info['error']}"), bgcolor="#ef4444"))
         else:
             self.page.show_snack_bar(ft.SnackBar(ft.Text(f"✅ Загружено: {info['filename']} ({info['chunks']} фр.)"), bgcolor="#10b981"))
+            
+            chat = self.chat_manager.get_current_chat()
+            if chat:
+                if "attachments" not in chat or chat["attachments"] is None:
+                    chat["attachments"] = []
+                if info["filename"] not in chat["attachments"]:
+                    chat["attachments"].append(info["filename"])
+                self.chat_manager.save()
         
         self.status_text.value = "● Готов"
         self.status_text.color = self.theme["status_ready"]
+        self._update_attachments_display() # ИСПРАВЛЕНО: обновляем чипы
+        self.page.update()
+
+    def _update_attachments_display(self):
+        chat = self.chat_manager.get_current_chat()
+        attachments = chat.get("attachments", []) if chat else []
+        
+        self.attachments_row.controls.clear()
+        
+        if attachments:
+            for name in attachments:
+                self.attachments_row.controls.append(
+                    ft.Chip(
+                        label=ft.Text(name, size=11, color="#dbeafe"),
+                        bgcolor="#1e3a8a",
+                        padding=4,
+                    )
+                )
+            self.attachments_row.visible = True
+        else:
+            self.attachments_row.visible = False
+            
         self.page.update()
 
     def _process(self, user_input: str):
@@ -504,17 +517,14 @@ class AviationRAGApp:
             if self.rag_system is None:
                 self.rag_system = SmartRAG(model_name=self.current_model_ollama)
             
-            # Получаем ответ с источниками
             response = self.rag_system.query(user_input, chat_id=self.chat_manager.current_chat_id)
             clean = response.replace("[С поиском]:\n", "").replace("[Без поиска]: ", "")
             
-            # Извлекаем источники из ответа (если они есть в формате [Источник: filename])
             sources = []
             import re
             source_matches = re.findall(r'\[Источник:\s*([^\]]+)\]', response)
             sources = source_matches
             
-            # Очищаем ответ от меток источников
             clean = re.sub(r'\n?\[Источник:[^\]]+\]', '', clean).strip()
             
             self.page.run_thread(self._on_response_ready, clean, sources)
@@ -538,17 +548,20 @@ class AviationRAGApp:
             width=300,
             bgcolor=self.theme["bg_input"],
             color=self.theme["text_primary"],
+            label="Выберите модель",
         )
-        status_lbl = ft.Text(f"Активная: {self.current_model_display}", color=self.theme["status_ready"], size=12)
+        status_lbl = ft.Text(f"Текущая: {self.current_model_display}", color=self.theme["status_ready"], size=12)
         
         def apply_model(e):
             chosen = model_dropdown.value
+            print(f"[DEBUG] Выбрана модель: {chosen}", flush=True)
             if chosen and chosen in AVAILABLE_MODELS:
                 self.current_model_display = chosen
                 self.current_model_ollama = AVAILABLE_MODELS[chosen]
                 self.model_label.value = f"{chosen}  •  PRL-27СМ RAG"
                 self.rag_system = None
                 status_lbl.value = f"✅ Применена: {chosen}"
+                print(f"[DEBUG] Модель установлена: {self.current_model_ollama}", flush=True)
                 self.page.update()
         
         dlg = ft.AlertDialog(
@@ -566,12 +579,12 @@ class AviationRAGApp:
                 padding=20
             ),
             actions=[
-                ft.FilledButton("Закрыть", on_click=lambda e: self.page.close(dlg)),
+                ft.FilledButton("Применить", on_click=lambda e: (apply_model(e), self.page.close(dlg))),
+                ft.TextButton("Отмена", on_click=lambda e: self.page.close(dlg)),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
         self.page.open(dlg)
-
 
 def main(page: ft.Page):
     AviationRAGApp(page)
