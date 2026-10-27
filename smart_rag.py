@@ -1,15 +1,25 @@
 """
 Модуль Smart RAG с Роутингом и Parent-Child Retrieval.
 """
-
 import logging
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from config import settings
 from vector_store import VectorStoreManager
 from hybrid_retriever import HybridRetriever
+from langchain_core.callbacks import BaseCallbackHandler
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
+
+class TokenCollector(BaseCallbackHandler):
+    def __init__(self):
+        self.tokens = []
+        
+    def on_llm_new_token(self, token: str, **kwargs):
+        self.tokens.append(token)
+        
+    def get_text(self):
+        return "".join(self.tokens)
 
 class SmartRAG:
     def __init__(self, model_name: str = "qwen2.5:14b"):
@@ -35,7 +45,8 @@ class SmartRAG:
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             temperature=0.1,
-            max_tokens=1024
+            max_tokens=2048,
+            streaming=True
         )
         
         # 4. Промпт для РОУТЕРА
@@ -209,7 +220,99 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
+    def query_stream(self, question: str, chat_id=None, on_token=None, cancel_flag=None) -> str:
+        """
+        Главный метод пайплайна с поддержкой streaming.
+        cancel_flag: словарь {"cancelled": True/False} для принудительной остановки генерации.
+        """
+        print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
+        user_ctx = self._get_user_context(question, chat_id)
+        
+        intent = self.route(question)
+        print(f"[STREAM] Интент: {intent}", flush=True)
+        
+        def _generate_stream(chain, context, question):
+            full_response = ""
+            for chunk in chain.stream({"context": context, "question": question}):
+                # 🚀 ГЛАВНОЕ ИСПРАВЛЕНИЕ: прерываем цикл, если флаг установлен
+                if cancel_flag and cancel_flag.get("cancelled"):
+                    print("[STREAM] Генерация прервана флагом отмены", flush=True)
+                    break 
+                
+                if hasattr(chunk, 'content') and chunk.content:
+                    full_response += chunk.content
+                    if on_token:
+                        on_token(full_response)
+            return full_response
 
+        if intent == "USERDOC":
+            if user_ctx:
+                chain = self.generator_prompt | self.llm
+                result = _generate_stream(chain, user_ctx, question)
+                return f"[С поиском]:\n{result}"
+            return "[Без поиска]: В этом чате нет загруженных документов."
+        
+        if intent == "CHAT" and not user_ctx:
+            chain = self.generator_prompt | self.llm
+            result = _generate_stream(chain, "Контекст отсутствует. Отвечай как обычный вежливый ассистент.", question)
+            return f"[Без поиска]: {result}"
+        
+        if intent == "CHAT" and user_ctx:
+            chain = self.generator_prompt | self.llm
+            result = _generate_stream(chain, user_ctx, question)
+            return f"[С поиском]:\n{result}"
+        
+        print("[STREAM] Переформулирование запроса для улучшения поиска...", flush=True)
+        search_query = self.rewrite_query(question)
+        print(f"[STREAM] Технический запрос: '{search_query}'", flush=True)
+        
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            print(f"[STREAM] Запуск поиска (Попытка {attempt})...", flush=True)
+            docs = self.retriever.search(search_query, k=5)
+            
+            seen_texts = set()
+            unique_docs = []
+            for doc in docs:
+                clean_text = " ".join(doc.page_content.split())
+                if clean_text not in seen_texts:
+                    seen_texts.add(clean_text)
+                    unique_docs.append(doc)
+            
+            context = "\n\n---\n\n".join([
+                f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}"
+                for doc in unique_docs
+            ])
+            
+            if user_ctx:
+                context = user_ctx + "\n\n---\n\n" + context
+            
+            chain = self.generator_prompt | self.llm
+            
+            full_response = _generate_stream(chain, context, question)
+            
+            # Если генерация была прервана, не пытаемся анализировать текст
+            if cancel_flag and cancel_flag.get("cancelled"):
+                return "[STREAM ОТМЕНЕН]"
+            
+            answer_text = full_response.lower()
+            negative_phrases = ["нет информации", "не указано", "не объясняется", "к сожалению", "не содержит", "отсутствует информация", "нет данных"]
+            is_failure = any(phrase in answer_text for phrase in negative_phrases)
+            
+            if is_failure and attempt == 1 and not user_ctx:
+                print("[STREAM] Self-RAG: Ответ не найден. Расширение поискового запроса...", flush=True)
+                broad_query_prompt = ChatPromptTemplate.from_messages([
+                    ("human", "Сделай этот поисковый запрос максимально широким и общим, оставив только ключевые технические термины и их синонимы: {query}")
+                ])
+                search_query = (broad_query_prompt | self.llm).invoke({"query": search_query}).content.strip()
+                print(f"[STREAM] Расширенный запрос (Попытка 2): '{search_query}'", flush=True)
+                continue
+            
+            print("[STREAM] Успешный ответ сформирован.", flush=True)
+            return f"[С поиском]:\n{full_response}"
+        
+        return "[С поиском]:\nК сожалению, даже после расширения поискового запроса, информация не найдена."
+    
 # ИНТЕРАКТИВНЫЙ ЗАПУСК
 if __name__ == "__main__":
     print("=" * 70)
