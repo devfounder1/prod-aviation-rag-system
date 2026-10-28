@@ -1,22 +1,3 @@
 {
-  "llm": {
-    "base_url": "http://127.0.0.1:11434/v1",
-    "model": "qwen2.5:14b",
-    "temperature": 0.1,
-    "max_tokens": 2048
-  },
-  "embedding": {
-    "model": "intfloat/multilingual-e5-small"
-  },
-  "paths": {
-    "documents": "documents",
-    "vector_db": "vector_db"
-  },
-  "user_docs": {
-    "collection": "user_documents",
-    "chunk_size": 800,
-    "chunk_overlap": 150,
-    "max_docs": 3,
-    "top_k": 4
-  }
+  "knowledge_base_path": "/Users/mihail/Documents/BUTUZ_AI/documents_ae"
 }

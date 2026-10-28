@@ -17,14 +17,27 @@ class DocumentIngestor:
     """
     Класс-оркестратор для обработки сырых документов.
     """
-    def __init__(self):
-        # Путь к папке с документами берем из config.py
-        self.base_dir = Path(settings.documents_dir)
+    def __init__(self, documents_path: str = None):
+        """
+        Инициализация обработчика документов.
+        
+        Args:
+            documents_path: Путь к папке с документами (опционально). 
+                           Если не указан, берётся из settings.knowledge_base_path
+        """
+        # Если путь передан явно — используем его, иначе берём из настроек
+        if documents_path:
+            self.documents_path = Path(documents_path)
+        else:
+            self.documents_path = Path(settings.knowledge_base_path) if settings.knowledge_base_path else Path(__file__).parent / "documents_ae"
+        
+        if not self.documents_path.exists():
+            raise FileNotFoundError(
+                f"Папка с документами не найдена: {self.documents_path}\n"
+                f"Укажите путь в настройках приложения."
+            )
         
         # Инициализируем сплиттер (разбиватель текста)
-        # RecursiveCharacterTextSplitter — это золотой стандарт в LangChain.
-        # Он пытается разбить текст по иерархии: сначала по абзацам (\n\n), 
-        # затем по предложениям (. ), затем по словам ( ), и только в крайнем случае режет жестко.
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size = settings.chunk_size,
             chunk_overlap = settings.chunk_overlap,
@@ -107,17 +120,25 @@ class DocumentIngestor:
         Главный метод: сканирует папку, читает файлы, разбивает на чанки 
         и возвращает список объектов LangChain Document с метаданными.
         """
-        logging.info(f"Начало сканирования папки : {self.base_dir.absolute()}")
+        logging.info(f"Начало сканирования папки : {self.documents_path.absolute()}")
         
         supported_text = {'.txt', '.docx', '.pdf'}
         langchain_docs = []
         
-        # rglob('*') рекурсивно обходит все подпапки
-        for file_path in self.base_dir.rglob('*'):
+        # Список паттернов для файлов, которые НЕ нужно индексировать
+        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents']
+        
+        for file_path in self.documents_path.rglob('*'):
             # Проверяем, что это файл и его расширение нам подходит
             if file_path.is_file() and file_path.suffix.lower() in supported_text:
                 
                 if file_path.name.startswith('~$'):
+                    continue
+                
+                # ПРОПУСКАЕМ ФАЙЛЫ-ОГЛАВЛЕНИЯ
+                file_name_lower = file_path.name.lower()
+                if any(pattern in file_name_lower for pattern in skip_patterns):
+                    logging.info(f"Пропущен файл-оглавление: {file_path.name}")
                     continue
                 
                 try: 

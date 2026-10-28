@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 import sys
 import platform
-import subprocess 
+import re
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
@@ -36,10 +36,11 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 
 AVAILABLE_MODELS = {
     "Qwen 2.5 (14B)": "qwen2.5:14b",
+    "Qwen 2.5 Coder Abliterated (14B)": "huihui_ai/qwen2.5-coder-abliterate:14b",
+    "Qwen 3 Abliterated (14B)": "huihui_ai/qwen3-abliterated:14b",
+    "Qwen 3.5 Uncensored Aggressive (9B)": "fredrezones55/Qwen3.5-Uncensored-HauhauCS-Aggressive:9b",
     "Qwen 2.5 (7B)": "qwen2.5:7b",
-    "Llama 3.1 (8B)": "llama3.1:8b",
     "Gemma 2 (9B)": "gemma2:9b",
-    "Mistral (7B)": "mistral:7b",
 }
 DEFAULT_MODEL_DISPLAY = "Qwen 2.5 (14B)"
 
@@ -167,11 +168,33 @@ class AviationRAGApp:
         
         self._streaming_chat_id = None
         self._streaming_row = None
+        self._last_prl_path = self._load_prl_path()
+        self._last_kb_path = "./knowledge_base"
         
         self._setup_page()
         self._build_ui()
         self.page.update()
         self._load_current_chat()
+        
+        # ПРОВЕРКА ПЕРВОГО ЗАПУСКА (вызываем напрямую, без потока!)
+        prl_path = self._load_prl_path()
+        if not prl_path:
+            print("[DEBUG] Первый запуск — показываем диалог выбора папки PRL-27", flush=True)
+            self._show_first_launch_dialog() 
+
+        # ФОНОВАЯ ПРЕДЗАГРУЗКА тяжёлых модулей, чтобы перестроение индекса
+        # не зависало молча на импортах torch/pdfplumber/langchain
+        def _warmup_imports():
+            try:
+                print("[WARMUP] Предзагрузка тяжёлых модулей в фоне...", flush=True)
+                import data_ingestion  # noqa
+                import vector_store    # noqa
+                print("[WARMUP] Тяжёлые модули готовы к работе", flush=True)
+            except Exception as ex:
+                print(f"[WARMUP] Ошибка предзагрузки: {ex}", flush=True)
+        
+        threading.Thread(target=_warmup_imports, daemon=True).start()
+    
     
     def _setup_page(self):
         self.page.title = f"{APP_NAME} v{APP_VERSION}"
@@ -318,20 +341,21 @@ class AviationRAGApp:
             hint_text="Message RAG Assistant...",
             multiline=True,
             min_lines=1,
-            max_lines=5,
+            max_lines=20,  # Увеличили с 5 до 20
+            expand=True,   # ДОБАВЛЕНО: поле будет занимать доступное пространство
             bgcolor=self.theme["bg_input"],
             color=self.theme["text_primary"],
             border_color=self.theme["border"],
             focused_border_color=self.theme["accent"],
             text_style=ft.TextStyle(size=15, font_family="main"),
             on_submit=self._handle_send,
-            expand=True,
+            # ДОБАВЛЕНО: автоматическая подстройка высоты
+            adaptive=True,
         )
         
-        self.file_picker = ft.FilePicker(
-            on_result=self._on_file_pick_result,
-        ) 
-        self.page.overlay.append(self.file_picker)
+        self.folder_picker = ft.FilePicker(on_result=self._on_folder_pick_result)
+        self.page.overlay.append(self.folder_picker)
+        self._folder_pick_target = None
         self.page.update()  # Обязательно обновляем страницу
         
         # ИСПРАВЛЕНО: Структура поля ввода теперь Column, чтобы чипы файлов были НАД строкой ввода
@@ -447,12 +471,17 @@ class AviationRAGApp:
         """Копирует код в буфер обмена"""
         try:
             self.page.set_clipboard(code)
-            self._show_toast("✅ Код скопирован!", color="#10b981", duration=1500)
+            self._show_toast("Код скопирован!", color="#10b981", duration=1500)
         except Exception as e:
             print(f"[ERROR] Ошибка копирования: {e}", flush=True)
 
     def _handle_attach_click(self, e):
         print("[DEBUG] Клик на кнопку +", flush=True)
+        self.file_picker.pick_files(
+            dialog_title="Выберите документ для загрузки",
+            allowed_extensions=["pdf", "docx", "txt", "md", "csv", "xlsx"],
+            allow_multiple=False,
+        )
         
         if platform.system() == "Darwin":
             # Правильный AppleScript для получения POSIX пути
@@ -506,41 +535,43 @@ class AviationRAGApp:
             original_chat_id = self.chat_manager.current_chat_id
             self._streaming_chat_id = original_chat_id
             
-            # 🚀 СОЗДАЕМ ФЛАГ ОТМЕНЫ
             self._stream_cancel_flag = {"cancelled": False}
             self._streaming_text = ""
             
             self.page.run_thread(self._add_streaming_placeholder)
             
+            chat = self.chat_manager.get_current_chat()
+            chat_history = chat["messages"][-5:] if chat and chat["messages"] else []
+            
             def on_token(full_text):
-                # Тихо выходим, если флаг уже установлен (цикл в smart_rag и так прервется)
                 if self._stream_cancel_flag.get("cancelled"):
                     return 
-                
                 self._streaming_text = full_text
                 self.page.run_thread(self._update_streaming_message, full_text)
             
-            # 🚀 ПЕРЕДАЕМ ФЛАГ В query_stream
-            response = self.rag_system.query_stream(
+            # 🆕 Получаем кортеж (ответ, источники)
+            response_data = self.rag_system.query_stream(
                 user_input,
+                chat_history=chat_history,
                 chat_id=original_chat_id,
                 on_token=on_token,
                 cancel_flag=self._stream_cancel_flag
             )
             
-            # Проверяем, не была ли отменена генерация
+            if isinstance(response_data, tuple):
+                response, real_sources = response_data
+            else:
+                response, real_sources = response_data, []
+            
             if self._stream_cancel_flag.get("cancelled") or original_chat_id not in self.chat_manager.chats:
                 print(f"[STREAM] Генерация была отменена, очищаем UI", flush=True)
                 self.page.run_thread(self._cleanup_cancelled_stream)
                 return
             
-            # Если всё хорошо, финализируем
-            import re
-            sources = re.findall(r'\[Источник:\s*([^\]]+)\]', response)
             clean = re.sub(r'\n?\[Источник:[^\]]+\]', '', response).strip()
             clean = clean.replace("[С поиском]:\n", "").replace("[Без поиска]: ", "")
             
-            self.page.run_thread(self._finalize_streaming_message, clean, sources, original_chat_id)
+            self.page.run_thread(self._finalize_streaming_message, clean, real_sources, original_chat_id)
             
         except Exception as e:
             import traceback
@@ -564,6 +595,155 @@ class AviationRAGApp:
             self.status_text.color = self.theme["status_busy"]
             self.page.update()
             threading.Thread(target=self._process_document, args=(file_path,), daemon=True).start()
+
+    def _on_folder_pick_result(self, e: ft.FilePickerResultEvent):
+        """Обработчик выбора папки через нативный диалог Flet"""
+        target = self._folder_pick_target
+        self._folder_pick_target = None
+        path = e.path
+        
+        if not path:
+            print("[DEBUG] Выбор папки отменен", flush=True)
+            return
+        
+        clean = path.rstrip('/')
+        print(f"[DEBUG] Выбрана папка (target={target}): {clean}", flush=True)
+        
+        if target == 'prl' and hasattr(self, 'prl_folder_path'):
+            self.prl_folder_path.value = clean
+            self.prl_folder_path.update()
+        elif target == 'kb' and hasattr(self, 'kb_folder_path'):
+            self.kb_folder_path.value = clean
+            self.kb_folder_path.update()
+        elif target == 'first' and hasattr(self, 'prl_first_path'):
+            self.prl_first_path.value = clean
+            self.prl_first_path.update()
+        
+        self.page.update()
+
+    def _apply_folder_path(self, target: str, path: str):
+        """Применяет выбранный путь к нужному полю"""
+        clean = path.rstrip('/')
+        print(f"[DEBUG] Применяю путь ({target}): {clean}", flush=True)
+        if target == 'prl':
+            self._last_prl_path = clean
+            if hasattr(self, 'prl_folder_path'):
+                self.prl_folder_path.value = clean
+                self.prl_folder_path.update()
+        elif target == 'kb':
+            self._last_kb_path = clean
+            if hasattr(self, 'kb_folder_path'):
+                self.kb_folder_path.value = clean
+                self.kb_folder_path.update()
+        elif target == 'first':
+            self._last_prl_path = clean
+            if hasattr(self, 'prl_first_path'):
+                self.prl_first_path.value = clean
+                self.prl_first_path.update()
+        self.page.update()
+
+    def _reopen_parent_dialog(self, target: str):
+        """Создаёт родительское окно ЗАНОВО (свежий экземпляр диалога)"""
+        import time
+        time.sleep(0.3)  # даём Flutter дочиста закрыть окно браузера папок
+        try:
+            if target == 'first':
+                self.page.run_thread(self._show_first_launch_dialog)
+            else:
+                self.page.run_thread(self._show_settings, None)
+        except Exception as ex:
+            print(f"[DEBUG] Не удалось снова открыть окно: {ex}", flush=True)
+
+    def _open_folder_browser(self, target: str):
+        """Встроенный браузер папок (100% работает, без системных диалогов)"""
+        # Стартовая папка: текущее значение поля или домашняя папка
+        start = str(Path.home())
+        if target == 'prl' and hasattr(self, 'prl_folder_path') and self.prl_folder_path.value:
+            start = self.prl_folder_path.value
+        elif target == 'kb' and hasattr(self, 'kb_folder_path') and self.kb_folder_path.value:
+            start = self.kb_folder_path.value
+        
+        path_field = ft.TextField(
+            value=start,
+            expand=True,
+            text_size=13,
+            bgcolor=self.theme["bg_input"],
+            color=self.theme["text_primary"],
+            border_color=self.theme["border"],
+        )
+        list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=2)
+        
+        def refresh(*_):
+            p = Path(path_field.value).expanduser()
+            if not p.is_dir():
+                return
+            path_field.value = str(p)
+            list_column.controls.clear()
+            try:
+                dirs = sorted([d for d in p.iterdir() if d.is_dir() and not d.name.startswith('.')])
+            except Exception:
+                dirs = []
+            for d in dirs:
+                list_column.controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.FOLDER, size=18, color=self.theme["accent"]),
+                            ft.Text(d.name, size=13, color=self.theme["text_primary"]),
+                        ], spacing=8),
+                        padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                        border_radius=6,
+                        ink=True,
+                        on_click=lambda e, dd=d: (setattr(path_field, 'value', str(dd)), refresh()),
+                    )
+                )
+            if not dirs:
+                list_column.controls.append(
+                    ft.Text("(нет вложенных папок)", size=12, color=self.theme["text_secondary"])
+                )
+            self.page.update()
+        
+        path_field.on_submit = lambda e: refresh()
+        
+        def go_up(e):
+            p = Path(path_field.value).expanduser().parent
+            path_field.value = str(p)
+            refresh()
+        
+        def confirm(e):
+            self.page.close(browser_dlg)
+            self._apply_folder_path(target, path_field.value)
+            # Возвращаем пользователя в родительское окно (настройки / первый запуск)
+            self._reopen_parent_dialog(target)
+        
+        def cancel(e):
+            self.page.close(browser_dlg)
+            self._reopen_parent_dialog(target)
+        
+        browser_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Выбор папки", size=18, weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.IconButton(ft.Icons.ARROW_UPWARD, tooltip="Вверх", on_click=go_up),
+                        path_field,
+                    ], spacing=6),
+                    ft.Text("Двойной клик по папке — войти. Или вставь путь в поле и нажми Enter.",
+                            size=11, color=self.theme["text_secondary"]),
+                    ft.Divider(height=1),
+                    ft.Container(content=list_column, height=320),
+                ], spacing=8),
+                width=520,
+            ),
+            actions=[
+                ft.FilledButton("Выбрать эту папку", on_click=confirm,
+                                style=ft.ButtonStyle(bgcolor=self.theme["accent"], color="#ffffff")),
+                ft.TextButton("Отмена", on_click=cancel),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        refresh()
+        self.page.open(browser_dlg)
 
     def _update_chat_list(self):
         self.chat_list_column.controls.clear()
@@ -596,7 +776,11 @@ class AviationRAGApp:
                 content=chat_row,
                 bgcolor=self.theme["accent"] if is_current else None,
                 border_radius=8,
-                on_click=lambda e, cid=chat_id: self._switch_chat(cid),
+                on_click=lambda e, cid=chat_id: (
+                    self._show_toast("Дождитесь завершения ответа!", color="#f59e0b") 
+                    if self.is_processing 
+                    else self._switch_chat(cid)
+                ),
                 padding=ft.padding.symmetric(horizontal=4, vertical=2),
             )
             
@@ -606,6 +790,21 @@ class AviationRAGApp:
         self.page.update()
 
     def _delete_chat(self, chat_id):
+        
+        #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ УДАЛЕНИИ ЧАТА
+        if chat_id == getattr(self, '_streaming_chat_id', None):
+            print(f"[DELETE] Останавливаем генерацию при удалении чата", flush=True)
+            if hasattr(self, '_stream_cancel_flag'):
+                self._stream_cancel_flag["cancelled"] = True
+            
+            if hasattr(self, '_streaming_row') and self._streaming_row in self.messages_column.controls:
+                self.messages_column.controls.remove(self._streaming_row)
+            
+            self.is_processing = False
+            self.status_text.value = "● Готов"
+            self.status_text.color = self.theme["status_ready"]
+            self.page.update()
+        
         chat_name = self.chat_manager.chats.get(chat_id, {}).get("name", "этот чат")
         
         def confirm_delete(e):
@@ -653,6 +852,23 @@ class AviationRAGApp:
         self._load_current_chat()
 
     def _switch_chat(self, chat_id):
+        #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ЧАТА
+        if self.is_processing:
+            print(f"[SWITCH] Останавливаем генерацию при переключении чата", flush=True)
+            if hasattr(self, '_stream_cancel_flag'):
+                self._stream_cancel_flag["cancelled"] = True
+            
+            # Очищаем streaming placeholder из текущего чата
+            if hasattr(self, '_streaming_row') and self._streaming_row in self.messages_column.controls:
+                self.messages_column.controls.remove(self._streaming_row)
+                print(f"[SWITCH] Удален streaming placeholder", flush=True)
+            
+            self.is_processing = False
+            self.status_text.value = "● Готов"
+            self.status_text.color = self.theme["status_ready"]
+            self.page.update()
+        
+        # Теперь переключаемся
         self.chat_manager.switch_chat(chat_id)
         self._update_chat_list()
         self._load_current_chat()
@@ -688,18 +904,34 @@ class AviationRAGApp:
                     )
             
             bubble = ft.Container(
-                content=ft.Column(attach_controls + [ft.Text(content, size=15, color="#ffffff", selectable=True)], spacing=8),
+                content=ft.Column(
+                    attach_controls + [
+                        ft.Text(
+                            content, 
+                            size=15, 
+                            color="#ffffff", 
+                            selectable=True,
+                            width=None,  # Убираем фиксированную ширину
+                        )
+                    ], 
+                    spacing=8
+                ),
                 bgcolor=self.theme["bg_bubble_user"],
                 padding=16,
                 border_radius=20,
+                expand=True,  # ДОБАВЛЕНО: контейнер занимает доступное пространство
             )
             avatar = ft.Image(src=self.assets["user"], width=40, height=40) if "user" in self.assets else ft.Text("👤", size=28)
             
-            row = ft.Row([
-                ft.Container(expand=True), 
-                bubble,
-                avatar,
-            ], vertical_alignment=ft.CrossAxisAlignment.START)
+            row = ft.Row(
+                [
+                    ft.Container(expand=True),  # Пустой контейнер для прижатия вправо
+                    bubble,
+                    avatar,
+                ], 
+                vertical_alignment=ft.CrossAxisAlignment.START,
+                expand=True,  # ДОБАВЛЕНО: строка занимает всю ширину
+            )
             
         else:
             # Рендерим контент с кнопками копирования кода
@@ -746,6 +978,8 @@ class AviationRAGApp:
     def _handle_send(self, e):
         text = self.input_field.value.strip()
         if not text or self.is_processing:
+            if self.is_processing:
+                self._show_toast(" Подождите завершения текущего ответа!", color="#f59e0b")
             return
         
         self.input_field.value = ""
@@ -954,6 +1188,194 @@ class AviationRAGApp:
         self.status_text.color = self.theme["status_ready"]
         self.page.update()
 
+    def _save_prl_path(self, path: str):
+        """Сохраняет путь к PRL-27 базе в config.json"""
+        config_path = Path(__file__).parent / "config.json"
+        try:
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            
+            config["knowledge_base_path"] = path
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            
+            print(f"[DEBUG] Путь PRL сохранён в config.json: {path}", flush=True)
+        except Exception as e:
+            print(f"[ERROR] Ошибка сохранения пути: {e}", flush=True)
+
+    def _load_prl_path(self) -> str:
+        """Загружает путь к PRL-27 базе из config.json"""
+        config_path = Path(__file__).parent / "config.json"
+        try:
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                return config.get("knowledge_base_path", "")
+        except Exception as e:
+            print(f"[ERROR] Ошибка загрузки пути: {e}", flush=True)
+        return ""
+
+    def _show_first_launch_dialog(self):
+        """Показывает приветственный диалог при первом запуске"""
+        
+        # Создаем диалог СНАЧАЛА, чтобы он был доступен функциям ниже
+        self.first_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Добро пожаловать в Aviation RAG!", size=20, weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Для начала работы укажите папку с технической документацией ПРЛ-27СМ:", size=14),
+                    ft.Container(height=10),
+                ], tight=True, spacing=10),
+                width=450,
+                padding=20
+            )
+        )
+        
+        def choose_folder(e):
+            self._open_folder_browser('first')
+
+        def start_app(e):
+            folder = self.prl_first_path.value.strip()
+            if not folder:
+                self._show_toast("Укажите путь к папке!", color="#ef4444")
+                return
+            
+            if not Path(folder).exists():
+                self._show_toast("Папка не существует!", color="#ef4444")
+                return
+            
+            self._save_prl_path(folder)
+            self.page.close(self.first_dlg)
+            self._show_toast("База знаний настроена! Начинаем индексацию...", color="#10b981", duration=3000)
+            
+            # Сразу запускаем перестроение индекса после выбора
+            self._rebuild_prl_index_direct(folder)
+
+        self.prl_first_path = ft.TextField(
+            label="Путь к папке с документами PRL-27",
+            value=self._last_prl_path or "",   # <-- добавить value
+            width=300,
+            bgcolor=self.theme["bg_input"],
+            color=self.theme["text_primary"],
+            hint_text="Нажмите иконку папки справа, чтобы выбрать",
+        )
+
+        choose_first_btn = ft.IconButton(
+            icon=ft.Icons.FOLDER,
+            tooltip="Выбрать папку",
+            on_click=choose_folder,
+            style=ft.ButtonStyle(color=self.theme["text_primary"]),
+        )
+
+        # Обновляем содержимое диалога
+        self.first_dlg.content = ft.Container(
+            content=ft.Column([
+                ft.Text("Для начала работы укажите папку с технической документацией ПРЛ-27СМ:", size=14),
+                ft.Container(height=10),
+                ft.Row([self.prl_first_path, choose_first_btn], spacing=10),
+                ft.Container(height=10),
+                ft.Text("Нажмите на иконку папки и выберите папку с документами.", size=12, color=self.theme["text_secondary"], italic=True),
+            ], tight=True, spacing=10),
+            width=450,
+            padding=20
+        )
+        
+        self.first_dlg.actions = [
+            ft.FilledButton("Начать работу", on_click=start_app, style=ft.ButtonStyle(bgcolor=self.theme["accent"], color="#ffffff")),
+        ]
+        self.first_dlg.actions_alignment = ft.MainAxisAlignment.END
+        
+        self.page.open(self.first_dlg)
+
+    def _close_dialog_and_toast(self, dlg, message, color, duration):
+        try:
+            self.page.close(dlg)
+        except Exception:
+            pass
+        self._show_toast(message, color=color, duration=duration)
+        self.page.update()
+
+    def _close_dialog_and_toast(self, dlg, message, color, duration):
+        """Закрывает диалог и показывает toast (безопасно из любого потока)"""
+        try:
+            self.page.close(dlg)
+        except Exception:
+            pass
+        self._show_toast(message, color=color, duration=duration)
+        self.page.update()
+
+    def _clear_all_data(self, e):
+        """Полная очистка всех данных приложения (Factory Reset)"""
+        import shutil
+        
+        def confirm_clear(e):
+            self.page.close(clear_dlg)
+            self._show_toast("Очистка данных...", color="#f59e0b", duration=99999)
+            
+            def run_clear():
+                try:
+                    base_dir = Path(__file__).parent
+                    folders_to_delete = [
+                        base_dir / "chroma_db_prl27",
+                        base_dir / "vector_db",
+                        base_dir / "documents"
+                    ]
+                    config_file = base_dir / "config.json"
+                    
+                    # 1. Удаляем папки
+                    for folder in folders_to_delete:
+                        if folder.exists():
+                            shutil.rmtree(folder)
+                            print(f"[DEBUG] Удалена папка: {folder}", flush=True)
+                    
+                    # 2. Очищаем config.json
+                    if config_file.exists():
+                        with open(config_file, 'w', encoding='utf-8') as f:
+                            json.dump({}, f)
+                        print("[DEBUG] Config.json очищен", flush=True)
+                    
+                    # 3. Сбрасываем переменные в памяти
+                    self.rag_system = None
+                    
+                    self._show_toast("Все данные успешно удалены! Перезапустите приложение.", color="#10b981", duration=5000)
+                    
+                except Exception as ex:
+                    self._show_toast(f"Ошибка при очистке: {ex}", color="#ef4444", duration=4000)
+            
+            threading.Thread(target=run_clear, daemon=True).start()
+
+        def cancel_clear(e):
+            self.page.close(clear_dlg)
+
+        clear_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Полная очистка данных", size=18, weight=ft.FontWeight.BOLD, color="#ef4444"),
+            content=ft.Text(
+                "Это действие необратимо!\n\n"
+                "Будут удалены:\n"
+                "• Вся векторная база знаний (ChromaDB)\n"
+                "• Все загруженные пользовательские документы\n"
+                "• Настройки путей к папкам\n\n"
+                "Приложение вернется в состояние 'первого запуска'.",
+                size=14,
+            ),
+            actions=[
+                ft.TextButton("Отмена", on_click=cancel_clear),
+                ft.FilledButton(
+                    "Да, удалить всё", 
+                    on_click=confirm_clear,
+                    style=ft.ButtonStyle(bgcolor="#ef4444", color="#ffffff"),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.open(clear_dlg)
+
     def _show_settings(self, e):
         model_dropdown = ft.Dropdown(
             options=[ft.dropdown.Option(k) for k in AVAILABLE_MODELS.keys()],
@@ -964,7 +1386,7 @@ class AviationRAGApp:
             label="Выберите модель",
         )
         status_lbl = ft.Text(f"Текущая: {self.current_model_display}", color=self.theme["status_ready"], size=12)
-        
+
         def apply_model(e):
             chosen = model_dropdown.value
             print(f"[DEBUG] Выбрана модель: {chosen}", flush=True)
@@ -973,31 +1395,236 @@ class AviationRAGApp:
                 self.current_model_ollama = AVAILABLE_MODELS[chosen]
                 self.model_label.value = f"{chosen}  •  PRL-27СМ RAG"
                 self.rag_system = None
-                status_lbl.value = f"✅ Применена: {chosen}"
+                status_lbl.value = f"Применена: {chosen}"
                 print(f"[DEBUG] Модель установлена: {self.current_model_ollama}", flush=True)
                 self.page.update()
-        
-        dlg = ft.AlertDialog(
+
+        # ============================================
+        # 1. Создаем диалог как атрибут класса (self.dlg)
+        # ============================================
+        self.dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("Настройки", size=20, weight=ft.FontWeight.BOLD),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text("Выберите LLM модель:", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Text("LLM Модель", size=14, weight=ft.FontWeight.BOLD),
                     model_dropdown,
                     status_lbl,
-                    ft.Divider(),
-                    ft.Text(f"База: PRL-27СМ Documentation\nВерсия: {APP_VERSION}", size=13, color=self.theme["text_secondary"]),
                 ], tight=True, spacing=10),
-                width=400,
+                width=450,
                 padding=20
-            ),
-            actions=[
-                ft.FilledButton("Применить", on_click=lambda e: (apply_model(e), self.page.close(dlg))),
-                ft.TextButton("Отмена", on_click=lambda e: self.page.close(dlg)),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+            )
         )
-        self.page.open(dlg)
+
+        def apply_and_close(e):
+            try:
+                apply_model(e)
+            except Exception as ex:
+                print(f"[ERROR] apply_model: {ex}", flush=True)
+            try:
+                self.page.close(self.dlg)
+            except Exception:
+                pass
+            self.page.update()
+
+        # 2. Безопасно добавляем actions
+        self.dlg.actions = [
+                ft.FilledButton("Применить и закрыть", on_click=apply_and_close),
+            ft.TextButton("Отмена", on_click=lambda e: self.page.close(self.dlg)),
+        ]
+        self.dlg.actions_alignment = ft.MainAxisAlignment.END
+
+        # ============================================
+        # БЛОК 1: Универсальная база знаний
+        # ============================================
+        self.kb_folder_path = ft.TextField(
+            label="Путь к папке знаний",
+            value=self._last_kb_path,          # <-- было "./knowledge_base"
+            width=300,
+            bgcolor=self.theme["bg_input"],
+            color=self.theme["text_primary"],
+        )
+        
+        def choose_folder(e):
+            self._open_folder_browser('kb')
+
+        def sync_kb(e):
+            folder = self.kb_folder_path.value.strip()
+            if not folder:
+                self._show_toast("Укажите путь к папке", color="#ef4444")
+                return
+            
+            self._show_toast(f"Синхронизация: {folder}...", color="#f59e0b", duration=99999)
+            
+            def run_ingest():
+                try:
+                    from ingest_folder import ingest_folder
+                    res = ingest_folder(folder, chat_id="global")
+                    if res["success"] > 0:
+                        self._show_toast(f"Добавлено {res['success']} из {res['total']} файлов", color="#10b981", duration=4000)
+                    else:
+                        self._show_toast(f"Не удалось добавить файлы. Проверьте консоль.", color="#ef4444", duration=4000)
+                except Exception as ex:
+                    self._show_toast(f"Ошибка синхронизации: {ex}", color="#ef4444", duration=4000)
+            
+            threading.Thread(target=run_ingest, daemon=True).start()
+
+        sync_btn = ft.ElevatedButton(
+            "Синхронизировать базу знаний",
+            icon=ft.Icons.FOLDER_OPEN,
+            on_click=sync_kb,
+            style=ft.ButtonStyle(bgcolor=self.theme["accent"], color="#ffffff"),
+            width=float("inf"),
+        )
+        
+        choose_btn = ft.IconButton(
+            icon=ft.Icons.FOLDER,
+            tooltip="Выбрать папку",
+            on_click=choose_folder,
+            style=ft.ButtonStyle(color=self.theme["text_primary"]),
+        )
+
+        # ============================================
+        # БЛОК 2: База знаний PRL-27 
+        # ============================================
+        try:
+            from config import settings as app_settings
+            current_prl_path = getattr(app_settings, 'knowledge_base_path', '') or ''
+        except:
+            current_prl_path = ''
+        
+        self.prl_folder_path = ft.TextField(
+            label="Путь к папке с документами PRL-27",
+            value=self._last_prl_path or current_prl_path,   # <-- запомненный путь
+            width=300,
+            bgcolor=self.theme["bg_input"],
+            color=self.theme["text_primary"],
+            hint_text="Например: /Users/mihail/Documents/documents_ae",
+        )
+        
+        def choose_prl_folder(e):
+            self._open_folder_browser('prl')
+
+        def rebuild_prl_index(e):
+            if self.is_processing:
+                self._show_toast("Процесс уже запущен, подождите завершения!", color="#f59e0b")
+                return
+            
+            folder = self.prl_folder_path.value.strip()
+            if not folder:
+                self._show_toast("Укажите путь к папке", color="#ef4444")
+                return
+            
+            if not Path(folder).exists():
+                self._show_toast("Папка не существует!", color="#ef4444")
+                return
+            
+            try:
+                from config import settings as app_settings
+                app_settings.knowledge_base_path = folder
+                self._save_prl_path(folder)
+                print(f"[DEBUG] Сохранён путь PRL: {folder}", flush=True)
+            except Exception as ex:
+                print(f"[WARN] Не удалось сохранить путь в конфиг: {ex}", flush=True)
+            
+            loading_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Обработка данных", weight=ft.FontWeight.BOLD),
+                content=ft.Column([
+                    ft.ProgressRing(width=48, height=48, stroke_width=5, color=self.theme["accent"]),
+                    ft.Container(height=15),
+                    ft.Text("Идет перестроение индекса PRL-27...\nЭто может занять около 1-2 минут.", text_align=ft.TextAlign.CENTER, size=14),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                actions=[],
+            )
+            self.page.open(loading_dlg)
+            self.page.update()
+            
+            def run_rebuild():
+                try:
+                    self.is_processing = True
+                    print("[REBUILD] Поток запущен, импортирую модули...", flush=True)
+                    
+                    from data_ingestion import DocumentIngestor
+                    print("[REBUILD] data_ingestion импортирован", flush=True)
+                    
+                    from vector_store import VectorStoreManager
+                    print("[REBUILD] vector_store импортирован, начинаю сканирование...", flush=True)
+                    
+                    ingestor = DocumentIngestor(documents_path=folder)
+                    documents = ingestor.process()
+                    
+                    if not documents:
+                        self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                                             "Документы не найдены в папке!", "#ef4444", 4000)
+                        self.is_processing = False
+                        return
+                    
+                    print("[REBUILD] Создание векторной базы...", flush=True)
+                    manager = VectorStoreManager()
+                    manager.create(documents)
+                    
+                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                                          f"Индекс перестроен! {len(documents)} документов", "#10b981", 5000)
+                    
+                except Exception as ex:
+                    import traceback
+                    print(f"[ERROR] Ошибка перестроения: {ex}\n{traceback.format_exc()}", flush=True)
+                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                                          f"Ошибка: {str(ex)[:60]}...", "#ef4444", 6000)
+                finally:
+                    self.is_processing = False
+            
+            # ЗАПУСКАЕМ перестроение в фоновом потоке
+            threading.Thread(target=run_rebuild, daemon=True).start()
+
+        rebuild_btn = ft.ElevatedButton(
+            "Перестроить индекс PRL-27",
+            icon=ft.Icons.BUILD,
+            on_click=rebuild_prl_index,
+            style=ft.ButtonStyle(bgcolor="#3b82f6", color="#ffffff"),
+            width=float("inf"),
+        )
+        
+        choose_prl_btn = ft.IconButton(
+            icon=ft.Icons.FOLDER,
+            tooltip="Выбрать папку PRL-27",
+            on_click=choose_prl_folder,
+            style=ft.ButtonStyle(color=self.theme["text_primary"]),
+        )
+        
+        # ============================================
+        # 3. Обновляем содержимое диалога всеми элементами
+        # ============================================
+        self.dlg.content = ft.Container(
+            content=ft.Column([
+                ft.Text("LLM Модель", size=14, weight=ft.FontWeight.BOLD),
+                model_dropdown,
+                status_lbl,
+                ft.Divider(),
+                ft.Text("База знаний PRL-27", size=14, weight=ft.FontWeight.BOLD),
+                ft.Row([self.prl_folder_path, choose_prl_btn], spacing=10),
+                rebuild_btn,
+                ft.Divider(),
+                ft.Text("Универсальная база знаний", size=14, weight=ft.FontWeight.BOLD),
+                ft.Row([self.kb_folder_path, choose_btn], spacing=10),
+                sync_btn,
+                ft.Divider(),
+                ft.Text(f"Версия приложения: {APP_VERSION}", size=13, color=self.theme["text_secondary"]),
+                ft.Divider(height=20, color="transparent"),
+                ft.ElevatedButton(
+                    "Полная очистка всех данных",
+                    icon=ft.Icons.DELETE_FOREVER,
+                    on_click=self._clear_all_data,
+                    style=ft.ButtonStyle(bgcolor="#ef4444", color="#ffffff"),
+                    width=float("inf"),
+                ),
+            ], tight=True, spacing=10),
+            width=450,
+            padding=20
+        )
+        
+        self.page.open(self.dlg)
 
 def main(page: ft.Page):
     AviationRAGApp(page)

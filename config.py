@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     # ПУТИ К ФАЙЛАМ
     # ==========================================
     documents_dir: str = "./documents_ae"
-    chroma_persist_dir: str = "./chroma_db_prl27"
-    
+    chroma_persist_dir: str = str(Path(__file__).parent / "chroma_db_prl27")
+    knowledge_base_path: str = "" 
     # ==========================================
     # НАСТРОЙКИ LLM (ЯЗЫКОВАЯ МОДЕЛЬ)
     # ==========================================
@@ -49,13 +49,24 @@ class Settings(BaseSettings):
     relevance_threshold: float = 0.5
     
     # ==========================================
-    # КОНФИГУРАЦИЯ PYDANTIC V2 (Вместо class Config)
+    # НАСТРОЙКИ ПОЛЬЗОВАТЕЛЬСКИХ ДОКУМЕНТОВ
+    # ==========================================
+    user_docs_collection: str = "user_documents"
+    user_docs_max_docs: int = 10
+    user_docs_top_k: int = 4
+    user_docs_chunk_size: int = 800
+    user_docs_chunk_overlap: int = 150
+    
+    # ==========================================
+    # КОНФИГУРАЦИЯ PYDANTIC V2
     # ==========================================
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False  # Полезная фича: позволяет писать в .env как DOCUMENTS_DIR, так и documents_dir
+        case_sensitive=False
     )
+    
+    
 
 
 # Создаем глобальный экземпляр настроек

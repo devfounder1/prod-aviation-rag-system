@@ -1,6 +1,7 @@
 """
 Модуль Smart RAG с Роутингом и Parent-Child Retrieval.
 """
+import re 
 import logging
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -23,7 +24,7 @@ class TokenCollector(BaseCallbackHandler):
 
 class SmartRAG:
     def __init__(self, model_name: str = "qwen2.5:14b"):
-        print(f"[SmartRAG] 🔧 Инициализация с моделью: {model_name}", flush=True)
+        print(f"[SmartRAG] Инициализация с моделью: {model_name}", flush=True)
         self.model_name = model_name
         
         try:
@@ -45,21 +46,30 @@ class SmartRAG:
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             temperature=0.1,
-            max_tokens=2048,
+            max_tokens=4096,
             streaming=True
         )
         
         # 4. Промпт для РОУТЕРА
+        # 4. Промпт для РОУТЕРА (УЛУЧШЕННЫЙ v2)
         self.router_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Ты — BUTUZIK.AI - диспетчер технической поддержки авиационного оборудования.
+            ("system", """Ты — BUTUZIK.AI, диспетчер технической поддержки авиационного оборудования.
 Проанализируй вопрос и определи, где искать ответ.
 
-ПРАВИЛА:
-- Если вопрос про ЗАГРУЖЕННЫЙ пользователем файл/документ ("что в файле", "в документе, который я загрузил", "опиши содержимое документа", "а в файле ...") — ответь строго одним словом: USERDOC
-- Если вопрос касается оборудования, шкафов (276ГГ02, 276ЦЦ02), плат (МКУ, УМИ, ПОИ), протоколов, инструкций, схем, кодов ошибок или технических терминов — ответь строго одним словом: SEARCH
-- Если это приветствие, благодарность или вопрос не по теме — ответь строго одним словом: CHAT
+ПРАВИЛА (приоритет по порядку):
+1. **USERDOC** — если в вопросе есть:
+   - Имя файла с расширением (.pdf, .docx, .txt, .md)
+   - Слова: "мой файл", "прикрепленный документ", "в резюме", "загруженный документ"
+   - Вопросы про личные документы, отчеты, резюме (не технические)
+   
+2. **SEARCH** — если вопрос касается:
+   - Оборудования ПРЛ-27СМ (шкафы 276ГГ02, 276ЦЦ02, платы МКУ, УМИ, ПОИ)
+   - Технических инструкций, протоколов, схем, кодов ошибок
+   - Команд, параметров, алгоритмов работы оборудования
+   
+3. **CHAT** — всё остальное (приветствия, благодарности, общие вопросы)
 
-Не пиши ничего кроме этого слова."""),
+Отвечай ТОЛЬКО одним словом: USERDOC, SEARCH или CHAT"""),
             ("human", "{question}")
         ])
         
@@ -73,7 +83,7 @@ class SmartRAG:
         | Колонка 1 | Колонка 2 | Колонка 3 |
         |-----------|-----------|-----------|
         | Данные 1  | Данные 2  | Данные 3  |
-        3. **Источники**: Всегда указывай источник в конце: [Источник: имя_файла]
+        3. **Источники**: ВАЖНО! Никогда не выдумывай имена файлов. Указывай источник ТОЛЬКО если он точно есть в разделе "КОНТЕКСТ" выше. Если в контексте нет имени файла — НЕ пиши "[Источник: ...]" вообще.
         4. **Честность**: Если информации недостаточно — скажи об этом, но предоставь всё, что есть.
         5. **Технические детали**: Не упрощай технические термины. Инженеры ценят точность.
 
@@ -88,9 +98,61 @@ class SmartRAG:
         {context}"""),
             ("human", "Вопрос: {question}\nРазвернутый технический ответ:")
         ])
+        
+        # 6. Промпт для ОБЫЧНОГО ОБЩЕНИЯ (CHAT mode)
+        self.chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", """Ты — дружелюбный, knowledgeable и ПОДРОБНЫЙ ассистент BUTUZIK.AI.
+            
+ИСТОРИЯ ДИАЛОГА:
+{history}
 
-    def route(self, question: str) -> str:
-        chain = self.router_prompt | self.llm
+ПРАВИЛА ФОРМИРОВАНИЯ ОТВЕТА:
+1. **РАЗВЕРНУТОСТЬ**: Давай МАКСИМАЛЬНО подробные ответы (минимум 5-7 предложений, а для инструкций — 10+ предложений).
+2. **СТРУКТУРА**: 
+   - Начни с краткого резюме (1-2 предложения)
+   - Затем детализированное объяснение
+   - Если это инструкция — ОБЯЗАТЕЛЬНО пронумеруй шаги (1, 2, 3...)
+   - Добавь предупреждения о безопасности, если тема того требует
+3. **ПРИМЕРЫ**: Если уместно, приводи конкретные примеры.
+4. **УЧИТЫВАЙ КОНТЕКСТ**: Если это уточнение к предыдущему вопросу, давай дополнительную информацию, а не повторяй предыдущий ответ.
+5. **ЕСТЕСТВЕННОСТЬ**: Объясняй понятно, дружелюбно, но профессионально.
+6. **НЕ УПОМИНАЙ** техническую документацию ПРЛ-27СМ, если тебя об этом прямо не просят."""),
+            ("human", "{question}")
+        ])
+
+    def route(self, question: str, chat_history: list = None) -> str:
+        """Определяет интент с учётом истории диалога"""
+        history_context = ""
+        if chat_history and len(chat_history) > 0:
+            # Берем последние 4 сообщения (2 пары вопрос-ответ)
+            last_msgs = chat_history[-4:]
+            history_context = "ПРЕДЫДУЩИЙ ДИАЛОГ:\n" + "\n".join([
+                f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:400]}" 
+                for m in last_msgs
+            ]) + "\n"
+        
+        router_prompt = ChatPromptTemplate.from_messages([
+            ("system", f"""Ты — BUTUZIK.AI, диспетчер технической поддержки.
+
+{history_context}
+
+ПРАВИЛА определения интента (приоритет по порядку):
+1. **CHAT** — если:
+   - Это приветствие, благодарность, общий бытовой вопрос.
+   - Это **уточнение** к предыдущему ответу (слова: "подробнее", "как именно", "а можно ещё", "распиши"), И предыдущая тема НЕ была сугубо технической про ПРЛ-27СМ.
+   - Вопрос НЕ содержит технических терминов ПРЛ-27СМ.
+   
+2. **SEARCH** — если:
+   - Вопрос про оборудование ПРЛ-27СМ (шкафы, платы, протоколы, сигналы).
+   - Это уточнение к предыдущему техническому ответу про ПРЛ-27СМ.
+   
+3. **USERDOC** — если вопрос про конкретный загруженный пользователем файл.
+
+Отвечай ТОЛЬКО одним словом: USERDOC, SEARCH или CHAT"""),
+            ("human", "Текущий вопрос пользователя: {question}")
+        ])
+        
+        chain = router_prompt | self.llm
         response = chain.invoke({"question": question}).content.strip().upper()
         for intent in ("USERDOC", "SEARCH", "CHAT"):
             if intent in response:
@@ -100,7 +162,7 @@ class SmartRAG:
     def rewrite_query(self, question: str) -> str:
         """Переформулирует человеческий вопрос в строгий технический поисковый запрос."""
         rewrite_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Ты — BUTUZIK.AI - Bтехнический эксперт по авиационному оборудованию ПРЛ-27СМ.
+            ("system", """Ты — BUTUZIK.AI - Технический эксперт по авиационному оборудованию ПРЛ-27СМ.
     Твоя задача — переформулировать вопрос пользователя в строгий технический поисковый запрос для системы RAG.
 
     ПРАВИЛА:
@@ -123,15 +185,29 @@ class SmartRAG:
         return rewritten
 
     def _get_user_context(self, question: str, chat_id=None) -> str:
-        """Контекст из документов, загруженных пользователем (кнопка '+')."""
+        """Контекст из документов: сначала ищем в текущем чате, потом в глобальной базе."""
         try:
             from document_processor import retrieve_user_context
+            
+            # 1. Сначала ищем в документах текущего чата
             ctx = retrieve_user_context(question, k=4, chat_id=chat_id)
             if ctx:
-                print(f"[SmartRAG] Контекст из пользовательских документов: {len(ctx)} симв.", flush=True)
-            return ctx or ""
+                print(f"[SmartRAG] Найдено в чате {chat_id}: {len(ctx)} симв.", flush=True)
+                return ctx
+            
+            # 2. Если не нашли, ищем в глобальной базе (chat_id="global")
+            print(f"[SmartRAG] Ищем в глобальной базе знаний...", flush=True)
+            ctx_global = retrieve_user_context(question, k=4, chat_id="global")
+            if ctx_global:
+                print(f"[SmartRAG] Найдено в глобальной базе: {len(ctx_global)} симв.", flush=True)
+                return ctx_global
+            
+            print(f"[SmartRAG] Документы не найдены", flush=True)
+            return ""
         except Exception as e:
-            print(f"[SmartRAG] пользовательские документы недоступны: {e}", flush=True)
+            import traceback
+            print(f"[SmartRAG] Ошибка поиска пользовательских документов:", flush=True)
+            traceback.print_exc() # <-- Это покажет точную строку и текст ошибки
             return ""
 
     def query(self, question: str, chat_id=None) -> str:
@@ -220,51 +296,64 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
-    def query_stream(self, question: str, chat_id=None, on_token=None, cancel_flag=None) -> str:
-        """
-        Главный метод пайплайна с поддержкой streaming.
-        cancel_flag: словарь {"cancelled": True/False} для принудительной остановки генерации.
-        """
+    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None) -> str:
         print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
-        user_ctx = self._get_user_context(question, chat_id)
         
-        intent = self.route(question)
+        # Формируем текстовый контекст истории
+        history_text = ""
+        if chat_history and len(chat_history) > 0:
+            last_msgs = chat_history[-4:]
+            history_text = "\n".join([f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:500]}" for m in last_msgs])
+        
+        # 1. СНАЧАЛА определяем интент С УЧЁТОМ ИСТОРИИ
+        intent = self.route(question, chat_history)
         print(f"[STREAM] Интент: {intent}", flush=True)
         
-        def _generate_stream(chain, context, question):
+        def _generate_stream(chain, context, question, hist_text):
             full_response = ""
-            for chunk in chain.stream({"context": context, "question": question}):
-                # 🚀 ГЛАВНОЕ ИСПРАВЛЕНИЕ: прерываем цикл, если флаг установлен
+            prompt_input = {"context": context, "question": question, "history": hist_text}
+            for chunk in chain.stream(prompt_input):
                 if cancel_flag and cancel_flag.get("cancelled"):
                     print("[STREAM] Генерация прервана флагом отмены", flush=True)
                     break 
-                
                 if hasattr(chunk, 'content') and chunk.content:
                     full_response += chunk.content
                     if on_token:
                         on_token(full_response)
             return full_response
 
-        if intent == "USERDOC":
+        # 2. CHAT mode
+        if intent == "CHAT":
+            has_filename = re.search(r'[\w\-\s]+\.(?:pdf|docx|txt|md)', question, re.IGNORECASE)
+            has_my_file = re.search(r'мой\s+файл|прикреплённ?ый\s+документ|загруженн?ый', question, re.IGNORECASE)
+            
+            if not (has_filename or has_my_file):
+                chain = self.chat_prompt | self.llm
+                result = _generate_stream(chain, "", question, history_text)
+                return result, []
+            
+            user_ctx = self._get_user_context(question, chat_id)
             if user_ctx:
                 chain = self.generator_prompt | self.llm
-                result = _generate_stream(chain, user_ctx, question)
-                return f"[С поиском]:\n{result}"
+                result = _generate_stream(chain, user_ctx, question, history_text)
+                return f"[С поиском]:\n{result}", []  # Источники из user_ctx
+            return "[Без поиска]: Не удалось найти указанный документ."
+
+        # 3. USERDOC mode
+        if intent == "USERDOC":
+            user_ctx = self._get_user_context(question, chat_id)
+            if user_ctx:
+                chain = self.generator_prompt | self.llm
+                result = _generate_stream(chain, user_ctx, question, history_text)
+                return f"[С поиском]:\n{result}", []  # Источники из user_ctx
             return "[Без поиска]: В этом чате нет загруженных документов."
-        
-        if intent == "CHAT" and not user_ctx:
-            chain = self.generator_prompt | self.llm
-            result = _generate_stream(chain, "Контекст отсутствует. Отвечай как обычный вежливый ассистент.", question)
-            return f"[Без поиска]: {result}"
-        
-        if intent == "CHAT" and user_ctx:
-            chain = self.generator_prompt | self.llm
-            result = _generate_stream(chain, user_ctx, question)
-            return f"[С поиском]:\n{result}"
-        
+
+        # 4. SEARCH mode
         print("[STREAM] Переформулирование запроса для улучшения поиска...", flush=True)
         search_query = self.rewrite_query(question)
         print(f"[STREAM] Технический запрос: '{search_query}'", flush=True)
+        
+        user_ctx = self._get_user_context(question, chat_id)
         
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
@@ -279,6 +368,24 @@ class SmartRAG:
                     seen_texts.add(clean_text)
                     unique_docs.append(doc)
             
+            # Фильтрация нерелевантных источников (файлы-оглавления)
+            # Фильтрация нерелевантных источников (файлы-оглавления)
+            filtered_docs = []
+            for doc in unique_docs:
+                filename = doc.metadata.get('filename', '').lower()
+                if not any(pattern in filename for pattern in ['содержание', 'contents', 'оглавление']):
+                    filtered_docs.append(doc)
+            
+            # Если после фильтрации ничего не осталось, используем оригинальные документы
+            if filtered_docs:
+                unique_docs = filtered_docs
+            
+            # 🆕 СОБИРАЕМ РЕАЛЬНЫЕ источники из метаданных ДО формирования контекста
+            real_sources = list(set(
+                doc.metadata.get('filename', 'Неизвестный файл') 
+                for doc in unique_docs
+            ))
+            
             context = "\n\n---\n\n".join([
                 f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}"
                 for doc in unique_docs
@@ -288,12 +395,10 @@ class SmartRAG:
                 context = user_ctx + "\n\n---\n\n" + context
             
             chain = self.generator_prompt | self.llm
+            full_response = _generate_stream(chain, context, question, history_text)
             
-            full_response = _generate_stream(chain, context, question)
-            
-            # Если генерация была прервана, не пытаемся анализировать текст
             if cancel_flag and cancel_flag.get("cancelled"):
-                return "[STREAM ОТМЕНЕН]"
+                return "[STREAM ОТМЕНЕН]", []
             
             answer_text = full_response.lower()
             negative_phrases = ["нет информации", "не указано", "не объясняется", "к сожалению", "не содержит", "отсутствует информация", "нет данных"]
@@ -309,9 +414,10 @@ class SmartRAG:
                 continue
             
             print("[STREAM] Успешный ответ сформирован.", flush=True)
-            return f"[С поиском]:\n{full_response}"
+            # Возвращаем КОРТЕЖ: (ответ, список_источников)
+            return f"[С поиском]:\n{full_response}", real_sources
         
-        return "[С поиском]:\nК сожалению, даже после расширения поискового запроса, информация не найдена."
+        return "[С поиском]:\nК сожалению, информация не найдена.", []
     
 # ИНТЕРАКТИВНЫЙ ЗАПУСК
 if __name__ == "__main__":

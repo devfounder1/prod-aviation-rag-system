@@ -42,19 +42,58 @@ class HybridRetriever:
             logging.info("Будет использоваться только гибридный поиск (BM25 + Vector + RRF).")
             
     def _build_bm25_index(self):
+        """Построение BM25 индекса с защитой от лимита SQLite в ChromaDB"""
         logging.info("Построение BM25 индекса...")
-        all_docs = self.vector_store.get(limit=None)
+        try:
+            texts = []
+            limit = 1000  # Безопасный лимит для SQLite
+            offset = 0
+            
+            # Получаем документы порциями
+            while True:
+                collection_data = self.vector_store.get(limit=limit, offset=offset, include=['documents'])
+                batch_texts = collection_data.get('documents', [])
+                
+                if not batch_texts:
+                    break
+                    
+                texts.extend(batch_texts)
+                
+                if len(batch_texts) < limit:
+                    break  # Это была последняя порция
+                    
+                offset += limit
+            
+            if not texts:
+                logging.warning("Векторная база пуста. BM25 индекс не построен.")
+                self.bm25 = None
+                return
+            
+            # texts - это список строк, делаем .split() для каждой
+            tokenized_docs = [text.split() for text in texts]
+            self.bm25 = BM25Okapi(tokenized_docs)
+            logging.info(f"BM25 индекс успешно построен для {len(texts)} документов")
+            
+        except Exception as e:
+            logging.error(f"Ошибка при построении BM25 индекса: {e}")
+            self.bm25 = None
         
-        self.documents = [
-            LangChainDocument(page_content=doc, metadata=meta)
-            for doc, meta in zip(all_docs['documents'], all_docs['metadatas'])
-        ]
+    def search(self, query: str, k: int = 5) -> List[LangChainDocument]:
         
-        tokenized_docs = [doc.page_content.split() for doc in self.documents]
-        self.bm25 = BM25Okapi(tokenized_docs)
-        logging.info(f"BM25 индекс построен для {len(self.documents)} документов")
+        # ЖЕСТКАЯ ЗАЩИТА: k и candidate_k никогда не могут быть 0 или отрицательными
+        k = max(1, int(k))
+        candidate_k = max(1, int(k * 3))
         
-    def search(self, query: str, k: int = None) -> List[LangChainDocument]:
+        if self.vector_store is None:
+            raise RuntimeError("Векторная база данных не инициализирована")
+            
+        logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        
+        # Если BM25 не построен, fallback на чистый векторный поиск
+        if self.bm25 is None:
+            logging.info("BM25 индекс отсутствует, используем только векторный поиск.")
+            return self.vector_store_manager.search(query, k=k)
+        
         if k is None:
             k = settings.rerank_top_k
         
@@ -63,6 +102,14 @@ class HybridRetriever:
         vector_results = self.vector_store_manager.search(query, k=candidate_k)
         
         tokenized_query = query.split()
+        
+        bm25_scores = []
+        if self.bm25 is not None:
+            tokenized_query = query.split()
+            bm25_scores = self.bm25.get_scores(tokenized_query)
+        else:
+            bm25_scores = [0.0] * len(docs)
+        
         bm25_scores = self.bm25.get_scores(tokenized_query)
         top_bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_k]
         bm25_results = [self.documents[i] for i in top_bm25_indices]
@@ -70,7 +117,16 @@ class HybridRetriever:
         fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
         final_results = self._rerank(query, fused_results, top_k=k)
         
-        return final_results
+        # ДОПОЛНИТЕЛЬНАЯ ФИЛЬТРАЦИЯ: исключаем файлы-оглавления из финальных результатов
+        skip_patterns = ['содержание', 'contents', 'оглавление', '0__содержание']
+        filtered_final = []
+        for doc in final_results:
+            filename = doc.metadata.get('filename', '').lower()
+            if not any(pattern in filename for pattern in skip_patterns):
+                filtered_final.append(doc)
+        
+        # Если после фильтрации пусто, возвращаем оригинальные результаты
+        return filtered_final if filtered_final else final_results[:k]
     
     def _reciprocal_rank_fusion(self, vector_results: List[LangChainDocument], bm25_results: List[LangChainDocument], k: int) -> List[LangChainDocument]:
         rrf_scores = {}
@@ -98,13 +154,25 @@ class HybridRetriever:
         if not documents:
             return []
             
-        # Фильтруем заведомо бесполезные файлы по метаданным
+        # ФИЛЬТРАЦИЯ: исключаем файлы-оглавления и нерелевантные документы
+        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents', '0__содержание']
+        
         filtered_docs = []
         for doc in documents:
-            filename = doc.metadata.get('filename', '').upper()
-            # Игнорируем: Содержание, файлы со словом "Вопрос" и сырые TXT логи
-            if "СОДЕРЖАНИЕ" not in filename and "ВОПРОС" not in filename and not filename.endswith('.TXT'):
-                filtered_docs.append(doc)
+            filename = doc.metadata.get('filename', '').lower()
+            
+            # Пропускаем файлы-оглавления
+            if any(pattern in filename for pattern in skip_patterns):
+                logging.info(f"Исключен файл-оглавление: {filename}")
+                continue
+            
+            # Оставляем только релевантные файлы
+            filtered_docs.append(doc)
+        
+        # Если после фильтрации ничего не осталось, возвращаем оригинальный список
+        if not filtered_docs:
+            logging.warning("После фильтрации не осталось документов, используем оригинальный список")
+            filtered_docs = documents
         
         if self.reranker is None:
             logging.info("Реранкинг пропущен. Возвращаем топ результатов гибридного поиска.")
@@ -114,10 +182,10 @@ class HybridRetriever:
         pairs = [(query, doc.page_content) for doc in filtered_docs]
         scores = self.reranker.predict(pairs)
         
-        scored_docs = list(zip(filtered_docs, scores)) # <-- ИСПРАВЛЕНО: zip с filtered_docs
+        scored_docs = list(zip(filtered_docs, scores))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         
-        return [doc for doc, score in scored_docs[:top_k]]     
+        return [doc for doc, score in scored_docs[:top_k]]    
 
 if __name__ == "__main__":
     print("=" * 60)

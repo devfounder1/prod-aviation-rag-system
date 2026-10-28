@@ -81,24 +81,55 @@ class VectorStoreManager:
         logging.info(f"Создание векторной базы (Parent-Child режим) из {len(documents)} документов")
         persist_path = Path(settings.chroma_persist_dir)
         
+        # ПОЛНОЕ УДАЛЕНИЕ СТАРОЙ БАЗЫ
         if persist_path.exists():
-            logging.warning(f"Папка {persist_path} уже существует. База будет перезаписана.")        
+            logging.warning(f"Папка {persist_path} уже существует. Полностью удаляем...")
+            import shutil
+            shutil.rmtree(persist_path)
+            logging.info(f"Старая база удалена: {persist_path.absolute()}")
+        
+        # Создаем папку заново
+        persist_path.mkdir(parents=True, exist_ok=True)
+        
+        # ВАЖНО: пересоздаем хранилище родителей ПОСЛЕ удаления старой базы
+        parent_store_path = persist_path / "parent_docs"
+        self.docstore = SimpleFileStore(str(parent_store_path))
+        
+        logging.info("Создаю родительские документы...")
         
         parent_docs = self.parent_splitter.split_documents(documents)
+        logging.info(f"Создано {len(parent_docs)} родителей")
+        
         child_docs = []
+        total_parents = len(parent_docs)
+        logging.info(f"Начинаю создание дочерних документов (всего {total_parents} родителей)...")
         
-        for parent in parent_docs:
-            parent_id = str(uuid.uuid4())
-            self.docstore.mset([(parent_id, parent.page_content)])
+        # ОБРАБОТКА ПАКЕТАМИ для ускорения
+        batch_size = 100
+        for batch_start in range(0, total_parents, batch_size):
+            batch_end = min(batch_start + batch_size, total_parents)
+            batch_parents = parent_docs[batch_start:batch_end]
             
-            children = self.child_splitter.split_documents([parent])
-            for child in children:
-                child.metadata["parent_id"] = parent_id
-                child.metadata["filename"] = parent.metadata.get("filename", "Unknown")
-                child_docs.append(child)
+            for parent in batch_parents:
+                parent_id = str(uuid.uuid4())
+                self.docstore.mset([(parent_id, parent.page_content)])
                 
-        logging.info(f"Создано {len(parent_docs)} родителей и {len(child_docs)} детей.")
+                children = self.child_splitter.split_documents([parent])
+                for child in children:
+                    child.metadata["parent_id"] = parent_id
+                    child.metadata["filename"] = parent.metadata.get("filename", "Unknown")
+                    child_docs.append(child)
+            
+            # Логируем прогресс каждые 100 родителей
+            progress = batch_end
+            percent = (progress / total_parents) * 100
+            logging.info(f"  Прогресс: {progress}/{total_parents} ({percent:.1f}%) - создано {len(child_docs)} детей")
+            print(f"  Прогресс: {progress}/{total_parents} ({percent:.1f}%) - создано {len(child_docs)} детей", flush=True)
         
+        logging.info(f"Создано {len(child_docs)} детей")
+        logging.info("Сохраняю в ChromaDB...")
+        print("Сохраняю в ChromaDB...", flush=True)
+                
         self.vector_store = Chroma.from_documents(
             documents=child_docs,
             embedding=self.embeddings,
@@ -107,6 +138,7 @@ class VectorStoreManager:
         )
         
         logging.info(f"Векторная база и хранилище родителей созданы в: {persist_path.absolute()}")
+        print(f"Векторная база создана в: {persist_path.absolute()}", flush=True)
         return self.vector_store
     
     def load(self) -> Chroma:
@@ -132,8 +164,19 @@ class VectorStoreManager:
             
         logging.info("Векторная база и хранилище родителей загружены")
         return self.vector_store
-
+    
     def search(self, query: str, k: int = None) -> List[LangChainDocument]:
+        if self.vector_store is None:
+            raise RuntimeError("Векторная база данных не инициализирована")
+        
+        if k is None:
+            k = settings.search_top_k
+            
+        # ЖЕСТКАЯ ЗАЩИТА: гарантируем, что k >= 1
+        k = max(1, int(k))
+        
+        logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        
         if self.vector_store is None:
             raise RuntimeError("Векторная база данных не инициализирована")
         

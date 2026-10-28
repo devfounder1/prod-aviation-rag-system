@@ -6,11 +6,9 @@ from pathlib import Path
 
 import chromadb
 import pandas as pd
-
-from llm_client import load_config
+from config import settings  # <-- ИСПОЛЬЗУЕМ НАШУ СОВРЕМЕННУЮ КОНФИГУРАЦИЮ
 
 BASE_DIR = Path(__file__).resolve().parent
-
 SUPPORTED = {".pdf", ".docx", ".txt", ".md", ".csv", ".xlsx"}
 
 # ==========================================
@@ -90,7 +88,7 @@ def chunk_text(text: str, size=800, overlap=150):
         else:
             if cur:
                 chunks.append(cur)
-            while len(p) > size:          # слишком длинный абзац режем по предложениям
+            while len(p) > size:
                 cut = p.rfind(". ", 0, size)
                 if cut < size // 2:
                     cut = size
@@ -99,14 +97,13 @@ def chunk_text(text: str, size=800, overlap=150):
             cur = p
     if cur:
         chunks.append(cur)
-    # перекрытие: хвост предыдущего чанка в начало текущего
     out = []
     for i, c in enumerate(chunks):
         out.append((chunks[i - 1][-overlap:] + " … " + c) if i > 0 and overlap else c)
     return out
 
 # ==========================================
-# ЭМБЕДДИНГИ (e5 требует префиксов query:/passage:)
+# ЭМБЕДДИНГИ
 # ==========================================
 class _Embedder:
     _model = None
@@ -116,9 +113,9 @@ class _Embedder:
         if cls._model is None:
             import torch
             from sentence_transformers import SentenceTransformer
-            name = load_config()["embedding"]["model"]
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            cls._model = SentenceTransformer(name, device=device)
+            name = settings.embedder_model_name
+            device = settings.embedder_device
+            cls._model = SentenceTransformer(name, device=device, local_files_only=True)
             print(f"[DOCS] Эмбеддинг-модель {name} на {device}", flush=True)
         return cls._model
 
@@ -135,16 +132,16 @@ class _Embedder:
         return vec.tolist()[0]
 
 # ==========================================
-# ХРАНИЛИЩЕ ChromaDB
+# ХРАНИЛИЩЕ ChromaDB (ИЗОЛИРОВАННОЕ)
 # ==========================================
 class UserDocStore:
     def __init__(self):
-        cfg = load_config()
-        db_path = BASE_DIR / cfg["paths"]["vector_db"]
+        # ИСПОЛЬЗУЕМ ОТДЕЛЬНУЮ ПАПКУ, ЧТОБЫ НЕ ПУТАТЬ С PRL-27
+        db_path = Path(settings.chroma_persist_dir).parent / "user_docs_chroma"
         db_path.mkdir(parents=True, exist_ok=True)
         self.client = chromadb.PersistentClient(path=str(db_path))
         self.coll = self.client.get_or_create_collection(
-            name=cfg["user_docs"]["collection"],
+            name=settings.user_docs_collection,
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -155,50 +152,71 @@ class UserDocStore:
         res = self.coll.get(include=["metadatas"])
         return sorted({m["doc_id"] for m in res["metadatas"]}) if res["metadatas"] else []
 
-    def enforce_limit(self, max_docs):
-        ids = self.doc_ids()
-        removed = []
-        while len(ids) >= max_docs:
-            old = ids.pop(0)
+    def enforce_limit(self, chat_id, max_docs):
+        res = self.coll.get(where={"chat_id": chat_id}, include=["metadatas"])
+        if not res["ids"]:
+            return
+        
+        ids_in_chat = sorted(list({m["doc_id"] for m in res["metadatas"]}))
+        while len(ids_in_chat) >= max_docs:
+            old = ids_in_chat.pop(0)
             self.coll.delete(where={"doc_id": old})
-            removed.append(old)
-        return removed
+            print(f"[DOCS] Лимит чата: старый документ {old} удалён", flush=True)
 
-    def add(self, doc_id, filename, chunks, embeddings):
+    def add(self, doc_id, filename, chunks, embeddings, chat_id, category):
         self.coll.add(
             ids=[f"{doc_id}_{i}" for i in range(len(chunks))],
             embeddings=embeddings,
             documents=chunks,
-            metadatas=[{"doc_id": doc_id, "filename": filename, "chunk": i,
-                        "uploaded_at": int(time.time())} for i in range(len(chunks))],
+            metadatas=[{
+                "doc_id": doc_id, 
+                "filename": filename, 
+                "chunk": i,
+                "uploaded_at": int(time.time()),
+                "chat_id": chat_id, 
+                "pending": 1,
+                "category": category
+            } for i in range(len(chunks))],
         )
 
-    def query(self, vector, k):
+    def query(self, vector, k, where_clause=None):
+        if where_clause:
+            return self.coll.query(query_embeddings=[vector], n_results=k, where=where_clause,
+                                   include=["documents", "metadatas", "distances"])
         return self.coll.query(query_embeddings=[vector], n_results=k,
                                include=["documents", "metadatas", "distances"])
 
-    def list_docs(self):
-        res = self.coll.get(include=["metadatas"])
+    def list_docs(self, chat_id=None, pending_only=False):
+        if chat_id and pending_only:
+            where = {"$and": [{"chat_id": chat_id}, {"pending": 1}]}
+        elif chat_id:
+            where = {"chat_id": chat_id}
+        elif pending_only:
+            where = {"pending": 1}
+        else:
+            where = None
+            
+        res = self.coll.get(where=where, include=["metadatas"]) if where else self.coll.get(include=["metadatas"])
         docs = {}
         for m in res["metadatas"]:
-            d = docs.setdefault(m["doc_id"], {"doc_id": m["doc_id"],
-                                              "filename": m["filename"],
-                                              "chunks": 0, "uploaded_at": m["uploaded_at"]})
+            d = docs.setdefault(m["doc_id"], {
+                "doc_id": m["doc_id"], "filename": m["filename"], "chunks": 0,
+                "uploaded_at": m.get("uploaded_at", 0),
+                "chat_id": m.get("chat_id"), "pending": m.get("pending", 0)})
             d["chunks"] += 1
         return sorted(docs.values(), key=lambda x: x["uploaded_at"])
 
 # ==========================================
 # ПУБЛИЧНОЕ API
 # ==========================================
-def add_document(path, chat_id="global", progress=print):
-    cfg = load_config()["user_docs"]
+def add_document(path, chat_id="global", category="general", progress=print):
     path = Path(path)
     progress(f"[DOCS] Парсинг {path.name}…")
     text = parse_file(path)
     if not text.strip():
         raise ValueError("Документ пустой или текст не распознан")
 
-    docs_dir = BASE_DIR / load_config()["paths"]["documents"]
+    docs_dir = Path(settings.documents_dir)
     docs_dir.mkdir(parents=True, exist_ok=True)
     dest = docs_dir / path.name
     if dest.exists():
@@ -206,80 +224,60 @@ def add_document(path, chat_id="global", progress=print):
     shutil.copy2(path, dest)
 
     progress(f"[DOCS] Чанкинг ({len(text)} символов)…")
-    chunks = chunk_text(text, cfg.get("chunk_size", 800), cfg.get("chunk_overlap", 150))
+    chunks = chunk_text(text, settings.user_docs_chunk_size, settings.user_docs_chunk_overlap)
 
     store = UserDocStore()
-    # лимит теперь PER-CHAT: вытесняем самый старый документ именно этого чата
-    ids_in_chat = sorted(
-        {m["doc_id"] for m in store.coll.get(where={"chat_id": chat_id}, include=["metadatas"])["metadatas"]},
-    ) if store.coll.get(where={"chat_id": chat_id}, include=["metadatas"])["ids"] else []
-    while len(ids_in_chat) >= cfg.get("max_docs", 1):
-        old = ids_in_chat.pop(0)
-        store.coll.delete(where={"doc_id": old})
-        progress(f"[DOCS] Лимит чата: старый документ {old} удалён")
+    store.enforce_limit(chat_id, settings.user_docs_max_docs)
 
     progress(f"[DOCS] Эмбеддинги для {len(chunks)} фрагментов…")
     emb = _Embedder.embed_docs(chunks)
 
     doc_id = f"doc_{int(time.time() * 1000)}"
-    store.coll.add(
-        ids=[f"{doc_id}_{i}" for i in range(len(chunks))],
-        embeddings=emb,
-        documents=chunks,
-        metadatas=[{"doc_id": doc_id, "filename": dest.name, "chunk": i,
-                    "uploaded_at": int(time.time()),
-                    "chat_id": chat_id, "pending": 1} for i in range(len(chunks))],
-    )
-    progress(f"[DOCS] Готово: {dest.name} -> {len(chunks)} фрагментов (чат {chat_id})")
-    return {"doc_id": doc_id, "filename": dest.name, "chunks": len(chunks)}
+    store.add(doc_id, dest.name, chunks, emb, chat_id, category)
+    
+    progress(f"[DOCS] Готово: {dest.name} -> {len(chunks)} фрагментов (категория: {category})")
+    return {"doc_id": doc_id, "filename": dest.name, "chunks": len(chunks), "category": category}
 
 def retrieve_user_context(query, k=None, chat_id=None):
-    """Контекст только из документов указанного чата."""
-    cfg = load_config()["user_docs"]
-    k = k or cfg.get("top_k", 4)
+    k = k or settings.user_docs_top_k
     store = UserDocStore()
     if store.count() == 0:
         return ""
+    
     vec = _Embedder.embed_query(query)
-    where = {"chat_id": chat_id} if chat_id else None
-    res = store.coll.query(query_embeddings=[vec], n_results=k, where=where,
-                           include=["documents", "metadatas", "distances"]) if where \
-        else store.coll.query(query_embeddings=[vec], n_results=k,
-                              include=["documents", "metadatas", "distances"])
+    where_clause = {"chat_id": chat_id} if chat_id else None
+    
+    filename_match = re.search(r'([\w\-\sА-Яа-я]+\.(?:pdf|docx|txt|md|csv|xlsx))', query, re.IGNORECASE)
+    
+    if filename_match:
+        target_file = filename_match.group(1).strip()
+        where_file = {"filename": target_file}
+        if chat_id:
+            where_file = {"$and": [{"chat_id": chat_id}, {"filename": target_file}]}
+        
+        res = store.query(vec, k, where_file)
+        if res["documents"][0] and len(res["documents"][0]) > 0:
+            parts = []
+            for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
+                parts.append(f"[Источник: {meta['filename']}]\n{doc}")
+            return "\n\n".join(parts)
+    
+    res = store.query(vec, k, where_clause)
+    
     parts = []
     for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
         if dist is not None and dist > 0.75:
             continue
-        parts.append(f"[Источник: {meta['filename']}, фрагмент {meta['chunk'] + 1}]\n{doc}")
+        parts.append(f"[Источник: {meta['filename']}]\n{doc}")
     return "\n\n".join(parts)
 
 def list_documents(chat_id=None, pending_only=False):
-    """Список документов: всех / чата / только ещё не отправленных (pending)."""
     store = UserDocStore()
-    if chat_id and pending_only:
-        where = {"$and": [{"chat_id": chat_id}, {"pending": 1}]}
-    elif chat_id:
-        where = {"chat_id": chat_id}
-    elif pending_only:
-        where = {"pending": 1}
-    else:
-        where = None
-    res = store.coll.get(where=where, include=["metadatas"]) if where \
-        else store.coll.get(include=["metadatas"])
-    docs = {}
-    for m in res["metadatas"]:
-        d = docs.setdefault(m["doc_id"], {
-            "doc_id": m["doc_id"], "filename": m["filename"], "chunks": 0,
-            "uploaded_at": m.get("uploaded_at", 0),
-            "chat_id": m.get("chat_id"), "pending": m.get("pending", 0)})
-        d["chunks"] += 1
-    return sorted(docs.values(), key=lambda x: x["uploaded_at"])
+    return store.list_docs(chat_id, pending_only)
 
 def consume_documents(chat_id):
-    """Помечает pending-документы чата как отправленные (pending=0). Возвращает имена файлов."""
     store = UserDocStore()
-    res = store.coll.get(where={"$and": [{"chat_id": chat_id}, {"pending": 1}]},
-                         include=["metadatas"])
+    res = store.coll.get(where={"$and": [{"chat_id": chat_id}, {"pending": 1}]}, include=["metadatas"])
     if not res["ids"]:
         return []
     new_metas = []
@@ -291,7 +289,6 @@ def consume_documents(chat_id):
     return sorted({m["filename"] for m in res["metadatas"]})
 
 def remove_document(doc_id: str, delete_file: bool = True) -> bool:
-    """Удаляет документ из ChromaDB и (опционально) оригинал из documents/."""
     store = UserDocStore()
     res = store.coll.get(where={"doc_id": doc_id}, include=["metadatas"])
     if not res["ids"]:
@@ -300,7 +297,7 @@ def remove_document(doc_id: str, delete_file: bool = True) -> bool:
     store.coll.delete(where={"doc_id": doc_id})
     if delete_file and filename:
         try:
-            p = BASE_DIR / load_config()["paths"]["documents"] / filename
+            p = Path(settings.documents_dir) / filename
             if p.exists():
                 p.unlink()
         except Exception as e:
