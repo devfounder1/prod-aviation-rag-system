@@ -83,7 +83,7 @@ class SmartRAG:
         | Колонка 1 | Колонка 2 | Колонка 3 |
         |-----------|-----------|-----------|
         | Данные 1  | Данные 2  | Данные 3  |
-        3. **Источники**: ВАЖНО! Никогда не выдумывай имена файлов. Указывай источник ТОЛЬКО если он точно есть в разделе "КОНТЕКСТ" выше. Если в контексте нет имени файла — НЕ пиши "[Источник: ...]" вообще.
+        3. **Источники**: НЕ пиши источники самостоятельно! НЕ добавляй строки вида "[Источник: ...]" и заголовок "Источник:" — система подставит их автоматически. Просто отвечай по сути контекста.
         4. **Честность**: Если информации недостаточно — скажи об этом, но предоставь всё, что есть.
         5. **Технические детали**: Не упрощай технические термины. Инженеры ценят точность.
 
@@ -119,7 +119,31 @@ class SmartRAG:
 6. **НЕ УПОМИНАЙ** техническую документацию ПРЛ-27СМ, если тебя об этом прямо не просят."""),
             ("human", "{question}")
         ])
+        self.last_sources = []
 
+        # 7. Промпт для ОТВЕТОВ ПО ПРИКРЕПЛЁННЫМ ФАЙЛАМ
+        self.file_prompt = ChatPromptTemplate.from_messages([
+            ("system", """Ты — ассистент, анализирующий документ, который пользователь прикрепил к сообщению.
+
+ПРАВИЛА:
+1. Отвечай СТРОГО по содержимому прикреплённого файла. НЕ используй внешние знания.
+2. СОПОСТАВЛЯЙ ОТВЕТ С ВОПРОСОМ:
+   - Если спрашивают о документе ЦЕЛИКОМ ("что в файле?", "резюмируй", "опиши документ") — дай развёрнутый структурированный разбор всех разделов.
+   - Если задан КОНКРЕТНЫЙ вопрос ("какие навыки?", "где он живёт?", "какой опыт работы?") — отвечай ТОЛЬКО на этот вопрос, приводя релевантные факты, цифры и имена из файла. НЕ пересказывай весь документ.
+   - Если вопрос — уточнение к предыдущему (см. историю диалога) — учитывай контекст прошлых ответов и не повторяй их.
+3. Передавай конкретику из файла: имена, даты, цифры, технологии, термины — не обобщай.
+4. Используй Markdown: списки, подзаголовки, таблицы — где уместно.
+5. Если в файле нет ответа — скажи об этом прямо.
+6. НЕ пиши раздел "Источники" — система добавит их автоматически.
+
+ИСТОРИЯ ДИАЛОГА (для понимания уточнений):
+{history}
+
+СОДЕРЖИМОЕ ПРИКРЕПЛЁННОГО ФАЙЛА:
+{context}"""),
+            ("human", "Вопрос пользователя: {question}")
+        ])
+   
     def route(self, question: str, chat_history: list = None) -> str:
         """Определяет интент с учётом истории диалога"""
         history_context = ""
@@ -261,12 +285,35 @@ class SmartRAG:
                     seen_texts.add(clean_text)
                     unique_docs.append(doc)
             
-            context = "\n\n---\n\n".join([
+            # Фильтрация файлов-оглавлений
+            filtered_docs = []
+            for doc in unique_docs:
+                filename = doc.metadata.get('filename', '').lower()
+                if not any(pattern in filename for pattern in ['содержание', 'contents', 'оглавление']):
+                    filtered_docs.append(doc)
+            
+            if filtered_docs:
+                unique_docs = filtered_docs
+            
+            # >>> СБОР ИСТОЧНИКОВ — ТОЛЬКО ЗДЕСЬ, когда unique_docs уже наполнен! <<<
+            real_sources = list(set(
+                doc.metadata.get('filename', 'Неизвестный файл')
+                for doc in unique_docs
+            ))
+            # Добавляем источники из пользовательских документов, если они участвуют
+            if user_ctx:
+                for s in re.findall(r'\[Источник:\s*([^\]]+)\]', user_ctx):
+                    if s not in real_sources:
+                        real_sources.append(s)
+            
+            self.last_sources = real_sources
+            self.last_context = "\n\n---\n\n".join(
                 f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}"
                 for doc in unique_docs
-            ])
+            )
+            print(f"[STREAM] Найдено документов: {len(unique_docs)}, источники: {real_sources}", flush=True)
             
-            # Пользовательские документы идут ПЕРВЫМИ в контексте
+            context = self.last_context
             if user_ctx:
                 context = user_ctx + "\n\n---\n\n" + context
             
@@ -296,9 +343,9 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
-    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None) -> str:
+    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None) -> str:
         print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
-        
+
         # Формируем текстовый контекст истории
         history_text = ""
         if chat_history and len(chat_history) > 0:
@@ -321,7 +368,75 @@ class SmartRAG:
                     if on_token:
                         on_token(full_response)
             return full_response
-
+        
+        # ПРИКРЕПЛЁННЫЕ ФАЙЛЫ — высший приоритет, БЕЗ подмешивания базы знаний
+        if user_context:
+            print(f"[STREAM] Контекст из прикреплённых файлов: {len(user_context)} симв. — используем ТОЛЬКО его", flush=True)
+            
+            # ВАЖНО: глобальную базу НЕ подключаем, чтобы модель не ушла в документацию ПРЛ
+            combined_context = user_context
+            
+            real_sources = re.findall(r'\[Прикреплённый файл:\s*([^\]]+)\]', user_context)
+            self.last_sources = real_sources
+            self.last_context = combined_context
+            
+            # Используем специальный промпт для файлов (без персоны инженера ПРЛ)
+            chain = self.file_prompt | self.llm
+            full_response = _generate_stream(chain, combined_context, question, history_text)
+            
+            if cancel_flag and cancel_flag.get("cancelled"):
+                return "[STREAM ОТМЕНЕН]", []
+            
+            print("[STREAM] Успешный ответ сформирован (по прикреплённому файлу).", flush=True)
+            return f"[С поиском]:\n{full_response}", real_sources
+        
+        # 1. СНАЧАЛА определяем интент С УЧЁТОМ ИСТОРИИ (только если файлов нет)
+        intent = self.route(question, chat_history)
+        print(f"[STREAM] Интент: {intent}", flush=True)
+        
+        # УТОЧНЯЮЩИЙ вопрос по недавно прикреплённому файлу
+        # НО ТОЛЬКО если вопрос НЕ про технические темы ПРЛ-27СМ
+        if recent_file_context and intent in ("CHAT", "USERDOC"):
+            # Ключевые маркеры, которые означают "это вопрос про базу ПРЛ, не про файл"
+            prl_keywords = [
+                # Технические темы ПРЛ-27СМ
+                'ппс', 'pps', 'прл', 'мку', 'пои', 'уми', 'прд',
+                '276гг', '276цц', 'д2хк', 'шкаф', 'излучение', 
+                'протокол передачи', 'синхронизатор', 'юстировк', 'топопривязк',
+                'сигнал pps', 'мезонин', 'dsp', 'плис', 'pci', 'srio',
+                
+                # Маркеры самоидентификации ассистента (НЕ по файлу!)
+                'как тебя зовут', 'твое имя', 'твоё имя', 'кто ты', 
+                'что ты такое', 'как твое имя', 'представься',
+                'ты кто', 'ты робот', 'ты человек', 'ты ии', 'ты нейросеть',
+                'твой создатель', 'кто тебя создал', 'ты украл',
+                
+                # Опасные темы (НЕ по файлу, идти в обычный CHAT)
+                'вирус', 'троян', 'убийств', 'убить', 'яд', 'отрав',
+                'взлом', 'хакер', 'hack', 'malware', 'exploit',
+            ]
+            question_lower = question.lower()
+            has_prl_marker = any(kw in question_lower for kw in prl_keywords)
+            
+            if not has_prl_marker:
+                print(f"[STREAM] Уточнение по файлу: использую сохранённый контекст ({len(recent_file_context)} симв.)", flush=True)
+                
+                real_sources = re.findall(r'\[Прикреплённый файл:\s*([^\]]+)\]', recent_file_context)
+                self.last_sources = real_sources
+                self.last_context = recent_file_context
+                
+                chain = self.file_prompt | self.llm
+                full_response = _generate_stream(chain, recent_file_context, question, history_text)
+                
+                if cancel_flag and cancel_flag.get("cancelled"):
+                    return "[STREAM ОТМЕНЕН]", []
+                
+                print("[STREAM] Успешный ответ сформирован (по сохранённому файлу).", flush=True)
+                return f"[С поиском]:\n{full_response}", real_sources
+            else:
+                print(f"[STREAM] Вопрос содержит тех. маркеры ПРЛ — пропускаю сохранённый файл, иду в базу знаний", flush=True)
+                # НЕ возвращаемся, а идём дальше по пайплайну (SEARCH или обычный CHAT)
+        
         # 2. CHAT mode
         if intent == "CHAT":
             has_filename = re.search(r'[\w\-\s]+\.(?:pdf|docx|txt|md)', question, re.IGNORECASE)
@@ -330,12 +445,14 @@ class SmartRAG:
             if not (has_filename or has_my_file):
                 chain = self.chat_prompt | self.llm
                 result = _generate_stream(chain, "", question, history_text)
+                self.last_sources = []
                 return result, []
             
             user_ctx = self._get_user_context(question, chat_id)
             if user_ctx:
                 chain = self.generator_prompt | self.llm
                 result = _generate_stream(chain, user_ctx, question, history_text)
+                self.last_sources = re.findall(r'\[Источник:\s*([^\]]+)\]', user_ctx)
                 return f"[С поиском]:\n{result}", []  # Источники из user_ctx
             return "[Без поиска]: Не удалось найти указанный документ."
 
@@ -345,6 +462,7 @@ class SmartRAG:
             if user_ctx:
                 chain = self.generator_prompt | self.llm
                 result = _generate_stream(chain, user_ctx, question, history_text)
+                self.last_sources = re.findall(r'\[Источник:\s*([^\]]+)\]', user_ctx)
                 return f"[С поиском]:\n{result}", []  # Источники из user_ctx
             return "[Без поиска]: В этом чате нет загруженных документов."
 
@@ -360,32 +478,47 @@ class SmartRAG:
             print(f"[STREAM] Запуск поиска (Попытка {attempt})...", flush=True)
             docs = self.retriever.search(search_query, k=5)
             
+            # ДЕТАЛЬНАЯ ОТЛАДКА: что вернул retriever
+            print(f"[STREAM] Retriever вернул {len(docs)} документов", flush=True)
+            for i, doc in enumerate(docs):
+                fname = doc.metadata.get('filename', '???')
+                clen = len(doc.page_content) if doc.page_content else 0
+                print(f"  [{i}] filename='{fname}', content_len={clen}", flush=True)
+            
+            # ДЕДУПЛИКАЦИЯ
             seen_texts = set()
             unique_docs = []
             for doc in docs:
-                clean_text = " ".join(doc.page_content.split())
-                if clean_text not in seen_texts:
+                clean_text = " ".join(doc.page_content.split()) if doc.page_content else ""
+                if clean_text and clean_text not in seen_texts:
                     seen_texts.add(clean_text)
                     unique_docs.append(doc)
             
-            # Фильтрация нерелевантных источников (файлы-оглавления)
-            # Фильтрация нерелевантных источников (файлы-оглавления)
+            print(f"[STREAM] После дедупликации: {len(unique_docs)} документов", flush=True)
+            
+            # ФИЛЬТРАЦИЯ файлов-оглавлений
             filtered_docs = []
             for doc in unique_docs:
                 filename = doc.metadata.get('filename', '').lower()
                 if not any(pattern in filename for pattern in ['содержание', 'contents', 'оглавление']):
                     filtered_docs.append(doc)
             
-            # Если после фильтрации ничего не осталось, используем оригинальные документы
+            # Если после фильтрации ничего не осталось — используем оригинальные
             if filtered_docs:
                 unique_docs = filtered_docs
             
-            # 🆕 СОБИРАЕМ РЕАЛЬНЫЕ источники из метаданных ДО формирования контекста
+            print(f"[STREAM] После фильтрации: {len(unique_docs)} документов", flush=True)
+            
+            # СОБИРАЕМ источники СНАЧАЛА (до формирования контекста!)
             real_sources = list(set(
                 doc.metadata.get('filename', 'Неизвестный файл') 
                 for doc in unique_docs
+                if doc.metadata.get('filename')
             ))
             
+            print(f"[STREAM] Реальные источники: {real_sources}", flush=True)
+            
+            # ФОРМИРУЕМ контекст
             context = "\n\n---\n\n".join([
                 f"[Источник: {doc.metadata.get('filename', 'Неизвестный файл')}]\n{doc.page_content}"
                 for doc in unique_docs
@@ -393,6 +526,10 @@ class SmartRAG:
             
             if user_ctx:
                 context = user_ctx + "\n\n---\n\n" + context
+            
+            # Сохраняем для fallback
+            self.last_sources = real_sources
+            self.last_context = context
             
             chain = self.generator_prompt | self.llm
             full_response = _generate_stream(chain, context, question, history_text)
@@ -414,7 +551,7 @@ class SmartRAG:
                 continue
             
             print("[STREAM] Успешный ответ сформирован.", flush=True)
-            # Возвращаем КОРТЕЖ: (ответ, список_источников)
+            print(f"[STREAM] ВОЗВРАЩАЕМ кортеж с источниками: {real_sources}", flush=True)
             return f"[С поиском]:\n{full_response}", real_sources
         
         return "[С поиском]:\nК сожалению, информация не найдена.", []

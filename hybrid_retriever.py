@@ -46,18 +46,21 @@ class HybridRetriever:
         logging.info("Построение BM25 индекса...")
         try:
             texts = []
+            metadatas = []
             limit = 1000  # Безопасный лимит для SQLite
             offset = 0
             
             # Получаем документы порциями
             while True:
-                collection_data = self.vector_store.get(limit=limit, offset=offset, include=['documents'])
+                collection_data = self.vector_store.get(limit=limit, offset=offset, include=['documents', 'metadatas'])
                 batch_texts = collection_data.get('documents', [])
+                batch_metadatas = collection_data.get('metadatas', [])
                 
                 if not batch_texts:
                     break
                     
                 texts.extend(batch_texts)
+                metadatas.extend(batch_metadatas)
                 
                 if len(batch_texts) < limit:
                     break  # Это была последняя порция
@@ -69,16 +72,24 @@ class HybridRetriever:
                 self.bm25 = None
                 return
             
+            # 🆕 СОХРАНЯЕМ документы в self.documents с метаданными
+            self.documents = [
+                LangChainDocument(page_content=text, metadata=metadata)
+                for text, metadata in zip(texts, metadatas)
+            ]
+            
             # texts - это список строк, делаем .split() для каждой
             tokenized_docs = [text.split() for text in texts]
             self.bm25 = BM25Okapi(tokenized_docs)
             logging.info(f"BM25 индекс успешно построен для {len(texts)} документов")
+            logging.info(f"Сохранено {len(self.documents)} документов в self.documents")
             
         except Exception as e:
             logging.error(f"Ошибка при построении BM25 индекса: {e}")
             self.bm25 = None
         
     def search(self, query: str, k: int = 5) -> List[LangChainDocument]:
+        print(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}", flush=True)
         
         # ЖЕСТКАЯ ЗАЩИТА: k и candidate_k никогда не могут быть 0 или отрицательными
         k = max(1, int(k))
@@ -94,39 +105,41 @@ class HybridRetriever:
             logging.info("BM25 индекс отсутствует, используем только векторный поиск.")
             return self.vector_store_manager.search(query, k=k)
         
-        if k is None:
-            k = settings.rerank_top_k
-        
-        candidate_k = min(15, len(self.documents))   
-
-        vector_results = self.vector_store_manager.search(query, k=candidate_k)
-        
-        tokenized_query = query.split()
-        
-        bm25_scores = []
-        if self.bm25 is not None:
-            tokenized_query = query.split()
-            bm25_scores = self.bm25.get_scores(tokenized_query)
+        # 🆕 ИСПРАВЛЕНО: candidate_k не должен зависеть от self.documents
+        # Используем фиксированный лимит или размер BM25 индекса
+        if hasattr(self.bm25, 'doc_len'):
+            max_docs = len(self.bm25.doc_len)
         else:
-            bm25_scores = [0.0] * len(docs)
+            max_docs = len(self.documents)
         
+        candidate_k = min(candidate_k, max_docs, 15)
+        print(f"[RETRIEVER] candidate_k={candidate_k}, max_docs={max_docs}", flush=True)
+        
+        # Векторный поиск
+        vector_results = self.vector_store_manager.search(query, k=candidate_k)
+        print(f"[RETRIEVER] vector_search вернул {len(vector_results)} документов", flush=True)
+        
+        # BM25 поиск
+        tokenized_query = query.split()
         bm25_scores = self.bm25.get_scores(tokenized_query)
         top_bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_k]
         bm25_results = [self.documents[i] for i in top_bm25_indices]
+        print(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов", flush=True)
         
+        # RRF fusion
         fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
+        print(f"[RETRIEVER] После RRF fusion: {len(fused_results)} документов", flush=True)
+        
+        # Реранкинг
         final_results = self._rerank(query, fused_results, top_k=k)
+        print(f"[RETRIEVER] После _rerank: {len(final_results)} документов", flush=True)
         
-        # ДОПОЛНИТЕЛЬНАЯ ФИЛЬТРАЦИЯ: исключаем файлы-оглавления из финальных результатов
-        skip_patterns = ['содержание', 'contents', 'оглавление', '0__содержание']
-        filtered_final = []
-        for doc in final_results:
-            filename = doc.metadata.get('filename', '').lower()
-            if not any(pattern in filename for pattern in skip_patterns):
-                filtered_final.append(doc)
+        # Финальная отладка
+        for i, doc in enumerate(final_results):
+            fname = doc.metadata.get('filename', '???')
+            print(f"[RETRIEVER] Финальный документ [{i}]: filename='{fname}'", flush=True)
         
-        # Если после фильтрации пусто, возвращаем оригинальные результаты
-        return filtered_final if filtered_final else final_results[:k]
+        return final_results
     
     def _reciprocal_rank_fusion(self, vector_results: List[LangChainDocument], bm25_results: List[LangChainDocument], k: int) -> List[LangChainDocument]:
         rrf_scores = {}
@@ -151,41 +164,44 @@ class HybridRetriever:
         return fused_docs
     
     def _rerank(self, query: str, documents: List[LangChainDocument], top_k: int) -> List[LangChainDocument]:
-        if not documents:
-            return []
-            
-        # ФИЛЬТРАЦИЯ: исключаем файлы-оглавления и нерелевантные документы
-        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents', '0__содержание']
+        print(f"[RETRIEVER._rerank] Вход: {len(documents)} документов, top_k={top_k}", flush=True)
         
+        if not documents:
+            print(f"[RETRIEVER._rerank] Пустой вход, возвращаем []", flush=True)
+            return []
+        
+        # ФИЛЬТРАЦИЯ файлов-оглавлений
+        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents', '0__содержание']
         filtered_docs = []
         for doc in documents:
             filename = doc.metadata.get('filename', '').lower()
-            
-            # Пропускаем файлы-оглавления
             if any(pattern in filename for pattern in skip_patterns):
-                logging.info(f"Исключен файл-оглавление: {filename}")
+                print(f"[RETRIEVER._rerank] Исключен файл-оглавление: {filename}", flush=True)
                 continue
-            
-            # Оставляем только релевантные файлы
             filtered_docs.append(doc)
         
-        # Если после фильтрации ничего не осталось, возвращаем оригинальный список
+        print(f"[RETRIEVER._rerank] После фильтрации оглавлений: {len(filtered_docs)} документов", flush=True)
+        
         if not filtered_docs:
-            logging.warning("После фильтрации не осталось документов, используем оригинальный список")
+            print(f"[RETRIEVER._rerank] Все документы отфильтрованы, возвращаем оригинальный список", flush=True)
             filtered_docs = documents
         
         if self.reranker is None:
-            logging.info("Реранкинг пропущен. Возвращаем топ результатов гибридного поиска.")
+            print(f"[RETRIEVER._rerank] Реранкер отсутствует, возвращаем топ {top_k}", flush=True)
             return filtered_docs[:top_k]
-            
-        # Формируем пары для модели строго с отфильтрованными документами
+        
+        # Реранкинг
         pairs = [(query, doc.page_content) for doc in filtered_docs]
         scores = self.reranker.predict(pairs)
+        print(f"[RETRIEVER._rerank] Получено {len(scores)} оценок от реранкера", flush=True)
         
         scored_docs = list(zip(filtered_docs, scores))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         
-        return [doc for doc, score in scored_docs[:top_k]]    
+        final = [doc for doc, score in scored_docs[:top_k]]
+        print(f"[RETRIEVER._rerank] Возвращаем {len(final)} документов", flush=True)
+        
+        return final    
 
 if __name__ == "__main__":
     print("=" * 60)

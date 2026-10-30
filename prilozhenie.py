@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import platform
 import re
+import subprocess
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
@@ -163,13 +164,13 @@ class AviationRAGApp:
         self.is_processing = False
         
         self.chat_list_controls = {}
-        self.file_picker = None
         self.attachments_row = None  # Для хранения строки с чипами файлов
         
         self._streaming_chat_id = None
         self._streaming_row = None
         self._last_prl_path = self._load_prl_path()
         self._last_kb_path = "./knowledge_base"
+        self._chat_file_contexts = {}  # chat_id -> текст последнего прикреплённого файла
         
         self._setup_page()
         self._build_ui()
@@ -195,6 +196,33 @@ class AviationRAGApp:
         
         threading.Thread(target=_warmup_imports, daemon=True).start()
     
+    def _extract_text_from_file(self, file_path: str) -> str:
+        """Извлекает текст из файла (PDF, DOCX, TXT, MD)"""
+        try:
+            path = Path(file_path)
+            suffix = path.suffix.lower()
+            
+            if suffix == '.txt' or suffix == '.md':
+                return path.read_text(encoding='utf-8')
+            
+            elif suffix == '.pdf':
+                import pdfplumber
+                text = ""
+                with pdfplumber.open(path) as pdf:
+                    for page in pdf.pages[:10]:  # Первые 10 страниц
+                        text += page.extract_text() or ""
+                return text[:5000]  # Ограничиваем 5000 символов
+            
+            elif suffix == '.docx':
+                from docx import Document
+                doc = Document(path)
+                return "\n".join([para.text for para in doc.paragraphs])[:5000]
+            
+            else:
+                return ""
+        except Exception as e:
+            print(f"[ERROR] Ошибка извлечения текста из {file_path}: {e}", flush=True)
+            return ""
     
     def _setup_page(self):
         self.page.title = f"{APP_NAME} v{APP_VERSION}"
@@ -353,9 +381,14 @@ class AviationRAGApp:
             adaptive=True,
         )
         
+        # FilePicker для выбора ПАПОК в настройках (обязателен)
         self.folder_picker = ft.FilePicker(on_result=self._on_folder_pick_result)
         self.page.overlay.append(self.folder_picker)
         self._folder_pick_target = None
+        
+        # FilePicker для файлов БОЛЬШЕ НЕ НУЖЕН:
+        # прикрепление файлов теперь работает через встроенный браузер _open_file_browser()
+        
         self.page.update()  # Обязательно обновляем страницу
         
         # ИСПРАВЛЕНО: Структура поля ввода теперь Column, чтобы чипы файлов были НАД строкой ввода
@@ -476,58 +509,12 @@ class AviationRAGApp:
             print(f"[ERROR] Ошибка копирования: {e}", flush=True)
 
     def _handle_attach_click(self, e):
+        """Прикрепление файла к текущему сообщению"""
         print("[DEBUG] Клик на кнопку +", flush=True)
-        self.file_picker.pick_files(
-            dialog_title="Выберите документ для загрузки",
-            allowed_extensions=["pdf", "docx", "txt", "md", "csv", "xlsx"],
-            allow_multiple=False,
-        )
-        
-        if platform.system() == "Darwin":
-            # Правильный AppleScript для получения POSIX пути
-            script = '''
-            try
-                set theFile to choose file with prompt "Выберите документ для загрузки"
-                return POSIX path of theFile
-            on error
-                return "CANCELLED"
-            end try
-            '''
-            
-            try:
-                result = subprocess.run(
-                    ['osascript', '-e', script], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=300
-                )
-                
-                if result.returncode == 0:
-                    file_path = result.stdout.strip()
-                    if file_path and file_path != "CANCELLED" and not file_path.startswith("alias"):
-                        print(f"[DEBUG] Выбран файл: {file_path}", flush=True)
-                        
-                        self.status_text.value = "● Обрабатываю документ..."
-                        self.status_text.color = self.theme["status_busy"]
-                        self.page.update()
-                        threading.Thread(target=self._process_document, args=(file_path,), daemon=True).start()
-                    else:
-                        print(f"[DEBUG] Выбор отменен или неверный путь: {file_path}", flush=True)
-                else:
-                    print(f"[ERROR] osascript вернул код {result.returncode}: {result.stderr}", flush=True)
-                    
-            except subprocess.TimeoutExpired:
-                print("[ERROR] Таймаут ожидания выбора файла", flush=True)
-            except Exception as ex:
-                print(f"[ERROR] Ошибка: {ex}", flush=True)
-        else:
-            self.file_picker.pick_files(
-                dialog_title="Выберите документ для загрузки",
-                allowed_extensions=["pdf", "docx", "txt", "md", "csv", "xlsx"],
-                allow_multiple=False,
-            )
+        # Используем встроенный браузер файлов
+        self._open_file_browser()
 
-    def _process(self, user_input: str):
+    def _process(self, user_input: str, attachments=None):
         try:
             if self.rag_system is None:
                 self.rag_system = SmartRAG(model_name=self.current_model_ollama)
@@ -543,33 +530,76 @@ class AviationRAGApp:
             chat = self.chat_manager.get_current_chat()
             chat_history = chat["messages"][-5:] if chat and chat["messages"] else []
             
+            # 🆕 ИЗВЛЕКАЕМ ТЕКСТ ИЗ ПРИКРЕПЛЁННЫХ ФАЙЛОВ И ЗАПОМИНАЕМ ЕГО ДЛЯ ЧАТА
+            user_context = ""
+            recent_file_context = None
+            
+            if attachments:
+                print(f"[DEBUG] Обрабатываю {len(attachments)} прикреплённых файлов", flush=True)
+                for att in attachments:
+                    text = self._extract_text_from_file(att['path'])
+                    if text:
+                        user_context += f"\n\n[Прикреплённый файл: {att['name']}]\n{text}\n"
+                        print(f"[DEBUG] Извлечено {len(text)} символов из {att['name']}", flush=True)
+                
+                # Сохраняем контекст файла для уточняющих вопросов в этом чате
+                if user_context:
+                    self._chat_file_contexts[original_chat_id] = user_context
+                    print(f"[DEBUG] Контекст файла сохранён для чата {original_chat_id}", flush=True)
+            else:
+                # Новых файлов нет — берём сохранённый контекст этого чата (для уточнений)
+                recent_file_context = self._chat_file_contexts.get(original_chat_id)
+            
             def on_token(full_text):
                 if self._stream_cancel_flag.get("cancelled"):
                     return 
                 self._streaming_text = full_text
                 self.page.run_thread(self._update_streaming_message, full_text)
             
-            # 🆕 Получаем кортеж (ответ, источники)
             response_data = self.rag_system.query_stream(
                 user_input,
                 chat_history=chat_history,
                 chat_id=original_chat_id,
                 on_token=on_token,
-                cancel_flag=self._stream_cancel_flag
+                cancel_flag=self._stream_cancel_flag,
+                user_context=user_context if user_context else None,
+                recent_file_context=recent_file_context, 
             )
             
-            if isinstance(response_data, tuple):
+            # Распаковка кортежа
+            if isinstance(response_data, tuple) and len(response_data) == 2:
                 response, real_sources = response_data
             else:
-                response, real_sources = response_data, []
+                response = response_data
+                real_sources = []
+            
+            # Fallback на last_sources
+            if not real_sources:
+                real_sources = getattr(self.rag_system, 'last_sources', [])
             
             if self._stream_cancel_flag.get("cancelled") or original_chat_id not in self.chat_manager.chats:
                 print(f"[STREAM] Генерация была отменена, очищаем UI", flush=True)
                 self.page.run_thread(self._cleanup_cancelled_stream)
                 return
             
+            # Очистка ответа от галлюцинаций модели
             clean = re.sub(r'\n?\[Источник:[^\]]+\]', '', response).strip()
+            clean = re.sub(r'\n?\*{0,2}Источник:\*{0,2}\s*$', '', clean).strip()
             clean = clean.replace("[С поиском]:\n", "").replace("[Без поиска]: ", "")
+            
+            # Добавляем имена прикреплённых файлов к источникам
+            if attachments:
+                attachment_names = [att['name'] for att in attachments]
+                real_sources = attachment_names + real_sources
+
+            # Убираем дубликаты источников с сохранением порядка
+            deduped = []
+            for s in real_sources:
+                if s not in deduped:
+                    deduped.append(s)
+            real_sources = deduped
+
+            print(f"[DEBUG] Финальные источники для UI: {real_sources}", flush=True)
             
             self.page.run_thread(self._finalize_streaming_message, clean, real_sources, original_chat_id)
             
@@ -588,13 +618,37 @@ class AviationRAGApp:
         self.status_text.color = self.theme["status_ready"]
         self.page.update()
 
-    def _on_file_pick_result(self, e: ft.FilePickerResultEvent):
-        if e.files:
-            file_path = e.files[0].path
-            self.status_text.value = "● Обрабатываю документ..."
-            self.status_text.color = self.theme["status_busy"]
-            self.page.update()
-            threading.Thread(target=self._process_document, args=(file_path,), daemon=True).start()
+    def _update_pending_attachments_display(self):
+        """Обновляет отображение прикреплённых файлов над полем ввода"""
+        if not hasattr(self, '_pending_attachments'):
+            self._pending_attachments = []
+        
+        self.attachments_row.controls.clear()
+        
+        if self._pending_attachments:
+            for att in self._pending_attachments:
+                chip = ft.Chip(
+                    label=ft.Text(att['name'], size=11, color="#dbeafe"),
+                    bgcolor="#1e3a8a",
+                    padding=4,
+                    delete_icon=ft.Icon(ft.Icons.CLOSE, size=14, color="#94a3b8"),
+                    on_delete=lambda e, name=att['name']: self._remove_pending_attachment(name),
+                )
+                self.attachments_row.controls.append(chip)
+            self.attachments_row.visible = True
+        else:
+            self.attachments_row.visible = False
+        
+        self.page.update()
+        
+    def _remove_pending_attachment(self, filename):
+        """Удаляет файл из списка ожидающих прикрепления"""
+        if hasattr(self, '_pending_attachments'):
+            self._pending_attachments = [
+                att for att in self._pending_attachments 
+                if att['name'] != filename
+            ]
+            self._update_pending_attachments_display()
 
     def _on_folder_pick_result(self, e: ft.FilePickerResultEvent):
         """Обработчик выбора папки через нативный диалог Flet"""
@@ -653,6 +707,135 @@ class AviationRAGApp:
                 self.page.run_thread(self._show_settings, None)
         except Exception as ex:
             print(f"[DEBUG] Не удалось снова открыть окно: {ex}", flush=True)
+
+    def _open_file_browser(self):
+        """Встроенный браузер файлов (работает гарантированно, без системных диалогов)"""
+        # Стартовая папка: домашняя директория
+        start = str(Path.home())
+        
+        path_field = ft.TextField(
+            value=start,
+            expand=True,
+            text_size=13,
+            bgcolor=self.theme["bg_input"],
+            color=self.theme["text_primary"],
+            border_color=self.theme["border"],
+        )
+        list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=2)
+        
+        def refresh(*_):
+            p = Path(path_field.value).expanduser()
+            if not p.is_dir():
+                return
+            path_field.value = str(p)
+            list_column.controls.clear()
+            
+            # Показываем файлы (а не только папки)
+            try:
+                items = sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+            except Exception:
+                items = []
+            
+            # Сначала папки
+            for item in items:
+                if item.is_dir() and not item.name.startswith('.'):
+                    list_column.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.FOLDER, size=18, color=self.theme["accent"]),
+                                ft.Text(item.name, size=13, color=self.theme["text_primary"]),
+                            ], spacing=8),
+                            padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                            border_radius=6,
+                            ink=True,
+                            on_click=lambda e, dd=item: (setattr(path_field, 'value', str(dd)), refresh()),
+                        )
+                    )
+            
+            # Потом файлы
+            for item in items:
+                if item.is_file() and item.suffix.lower() in ['.pdf', '.docx', '.txt', '.md']:
+                    list_column.controls.append(
+                        ft.Container(
+                            content=ft.Row([
+                                ft.Icon(ft.Icons.DESCRIPTION, size=18, color="#60a5fa"),
+                                ft.Text(item.name, size=13, color=self.theme["text_primary"]),
+                            ], spacing=8),
+                            padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                            border_radius=6,
+                            ink=True,
+                            on_click=lambda e, ff=item: self._select_file(str(ff), ff.name),
+                        )
+                    )
+            
+            if not items:
+                list_column.controls.append(
+                    ft.Text("(папка пуста)", size=12, color=self.theme["text_secondary"])
+                )
+            self.page.update()
+        
+        path_field.on_submit = lambda e: refresh()
+        
+        def go_up(e):
+            p = Path(path_field.value).expanduser().parent
+            path_field.value = str(p)
+            refresh()
+        
+        def cancel(e):
+            self.page.close(browser_dlg)
+        
+        browser_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Выбор файла", size=18, weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.IconButton(ft.Icons.ARROW_UPWARD, tooltip="Вверх", on_click=go_up),
+                        path_field,
+                    ], spacing=6),
+                    ft.Text("Клик по папке — войти. Клик по файлу — выбрать.",
+                            size=11, color=self.theme["text_secondary"]),
+                    ft.Divider(height=1),
+                    ft.Container(content=list_column, height=400),
+                ], spacing=8),
+                width=520,
+            ),
+            actions=[
+                ft.TextButton("Отмена", on_click=cancel),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        refresh()
+        self.page.open(browser_dlg)
+    
+    def _select_file(self, file_path: str, file_name: str):
+        """Обработчик выбора файла в браузере"""
+        print(f"[DEBUG] Выбран файл: {file_name}", flush=True)
+        
+        # Закрываем браузер
+        # browser_dlg доступен из замыкания, но нам нужно его закрыть
+        # Для этого найдём его в overlay страницы
+        for overlay in self.page.overlay:
+            if isinstance(overlay, ft.AlertDialog) and overlay.title and "Выбор файла" in (overlay.title.value if hasattr(overlay.title, 'value') else ""):
+                self.page.close(overlay)
+                break
+        
+        # Добавляем файл в pending_attachments
+        if not hasattr(self, '_pending_attachments'):
+            self._pending_attachments = []
+        
+        # Проверяем, не добавлен ли уже
+        if any(att['name'] == file_name for att in self._pending_attachments):
+            self._show_toast(f"Файл '{file_name}' уже прикреплён", color="#f59e0b")
+            return
+        
+        self._pending_attachments.append({
+            'path': file_path,
+            'name': file_name,
+        })
+        
+        self._update_pending_attachments_display()
+        self._show_toast(f"Прикреплён: {file_name}", color="#10b981")
 
     def _open_folder_browser(self, target: str):
         """Встроенный браузер папок (100% работает, без системных диалогов)"""
@@ -939,7 +1122,8 @@ class AviationRAGApp:
             
             # Добавляем источники ПРАВИЛЬНО (не как markdown-список)
             if sources:
-                source_text = "📎 Источники: " + ", ".join(sources[:3])
+                short_names = [s[:40] + "..." if len(s) > 40 else s for s in sources[:3]]
+                source_text = "📎 Источники: " + ", ".join(short_names)
                 if len(sources) > 3:
                     source_text += f" и ещё {len(sources) - 3}"
                 
@@ -979,10 +1163,15 @@ class AviationRAGApp:
         text = self.input_field.value.strip()
         if not text or self.is_processing:
             if self.is_processing:
-                self._show_toast(" Подождите завершения текущего ответа!", color="#f59e0b")
+                self._show_toast("⏳ Подождите завершения текущего ответа!", color="#f59e0b")
             return
         
+        # Получаем прикреплённые файлы
+        pending_attachments = getattr(self, '_pending_attachments', [])
+        
         self.input_field.value = ""
+        self._pending_attachments = []  # Очищаем список прикреплённых файлов
+        self._update_pending_attachments_display()
         
         chat = self.chat_manager.get_current_chat()
         if chat and chat["name"] == "Новый чат" and len(chat["messages"]) == 0:
@@ -990,15 +1179,19 @@ class AviationRAGApp:
             self.chat_manager.rename_chat(self.chat_manager.current_chat_id, new_name)
             self._update_chat_list()
         
-        self._add_message_to_ui("user", text)
-        self.chat_manager.add_message("user", text)
+        # Формируем список имён файлов для отображения
+        attachment_names = [att['name'] for att in pending_attachments]
+        
+        self._add_message_to_ui("user", text, attachments=attachment_names)
+        self.chat_manager.add_message("user", text, attachments=attachment_names)
         
         self.is_processing = True
         self.status_text.value = "● Думаю..."
         self.status_text.color = self.theme["status_busy"]
         self.page.update()
         
-        threading.Thread(target=self._process, args=(text,), daemon=True).start()
+        # Передаём прикреплённые файлы в обработчик
+        threading.Thread(target=self._process, args=(text, pending_attachments), daemon=True).start()
 
     def _send_example(self, text):
         self.input_field.value = text
@@ -1291,14 +1484,6 @@ class AviationRAGApp:
         self.first_dlg.actions_alignment = ft.MainAxisAlignment.END
         
         self.page.open(self.first_dlg)
-
-    def _close_dialog_and_toast(self, dlg, message, color, duration):
-        try:
-            self.page.close(dlg)
-        except Exception:
-            pass
-        self._show_toast(message, color=color, duration=duration)
-        self.page.update()
 
     def _close_dialog_and_toast(self, dlg, message, color, duration):
         """Закрывает диалог и показывает toast (безопасно из любого потока)"""
