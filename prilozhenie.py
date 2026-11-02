@@ -174,8 +174,22 @@ class AviationRAGApp:
         
         self._setup_page()
         self._build_ui()
+        # АВТОМАТИЧЕСКИЙ ЗАПУСК wake-listener «Бутуз»
+        try:
+            from voice_input import WakeWordListener
+            self.wake_listener = WakeWordListener(on_wake=self._on_wake_word)
+            self.wake_listener.start()
+            print("[VOICE] Wake-listener запущен автоматически", flush=True)
+        except Exception as e:
+            print(f"[VOICE] Не удалось запустить wake-listener: {e}", flush=True)
+            self.wake_listener = None
         self.page.update()
         self._load_current_chat()
+        
+        self._voice_recording = False
+        self._voice_busy = False
+        self._voice_stop = None
+        self.wake_listener = None
         
         # ПРОВЕРКА ПЕРВОГО ЗАПУСКА (вызываем напрямую, без потока!)
         prl_path = self._load_prl_path()
@@ -394,10 +408,20 @@ class AviationRAGApp:
         # ИСПРАВЛЕНО: Структура поля ввода теперь Column, чтобы чипы файлов были НАД строкой ввода
         self.attachments_row = ft.Row([], wrap=True, spacing=4, visible=False)
         
+        # КНОПКА МИКРОФОНА (голосовой ввод)
+        self.mic_button = ft.IconButton(
+            icon=ft.Icons.MIC,
+            icon_size=28,
+            tooltip="Голосовой ввод: нажми — запись, нажми ещё — стоп",
+            icon_color=self.theme["text_primary"],
+            on_click=self._toggle_voice_input,
+        )
+        
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
                 ft.Row([
+                    self.mic_button,   # 🆕 МИКРОФОН (первым в строке)
                     self._make_icon_button(
                         self.assets.get("add", self.assets.get("new_chat")), # Безопасный фоллбэк
                         on_click=self._handle_attach_click,
@@ -1249,6 +1273,117 @@ class AviationRAGApp:
         # Передаём прикреплённые файлы в обработчик
         threading.Thread(target=self._process, args=(text, pending_attachments), daemon=True).start()
 
+    # ============ ГОЛОСОВОЙ ВВОД ============
+    
+    def _set_mic_state(self, state):
+        if state == "rec":
+            self.mic_button.icon = ft.Icons.STOP_CIRCLE
+            self.mic_button.icon_color = "#ef4444"
+        elif state == "busy":
+            self.mic_button.icon = ft.Icons.HOURGLASS_TOP
+            self.mic_button.icon_color = "#f59e0b"
+        else:
+            self.mic_button.icon = ft.Icons.MIC
+            self.mic_button.icon_color = self.theme["text_primary"]
+        self.mic_button.update()
+    
+    def _toggle_voice_input(self, e):
+        if self._voice_busy:
+            return
+        if not self._voice_recording:
+            import threading as _th
+            self._voice_stop = _th.Event()
+            self._voice_recording = True
+            self._set_mic_state("rec")
+            self._show_toast("Запись... нажмите ещё раз, чтобы завершить", color="#3b82f6", duration=2500)
+            _th.Thread(target=self._voice_record_loop, daemon=True).start()
+        else:
+            self._voice_stop.set()
+    
+    def _voice_record_loop(self):
+        try:
+            from voice_input import record_until_stop, transcribe
+            audio = record_until_stop(self._voice_stop)
+            self._voice_recording = False
+            self.page.run_thread(self._set_mic_state, "busy")
+            self.page.run_thread(self._show_toast, "Распознаю речь (первый запуск может грузить модель)...", "#f59e0b", 4000)
+            text = transcribe(audio)
+            self.page.run_thread(self._voice_apply_text, text)
+        except Exception as ex:
+            print(f"[VOICE] Ошибка записи: {ex}", flush=True)
+            self._voice_recording = False
+            self.page.run_thread(self._set_mic_state, "idle")
+            self.page.run_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
+    
+    def _voice_apply_text(self, text):
+        self._set_mic_state("idle")
+        text = (text or "").strip()
+        if not text:
+            self._show_toast("Не удалось распознать речь", color="#ef4444")
+            return
+        self.input_field.value = ((self.input_field.value or "") + " " + text).strip()
+        self.input_field.update()
+        self._show_toast(f"Распознано: {text[:60]}", color="#10b981")
+    
+    # ---- Wake-word «Бутуз» ----
+    
+    def _start_wake_listener(self):
+        from voice_input import WakeWordListener
+        if self.wake_listener is None or not self.wake_listener.is_alive():
+            self.wake_listener = WakeWordListener(on_wake=self._on_wake_word)
+        self.wake_listener.start()
+        self._show_toast("Слежу за «Бутуз»...", color="#3b82f6")
+    
+    def _stop_wake_listener(self):
+        if self.wake_listener:
+            self.wake_listener.stop()
+    
+    def _on_wake_word(self):
+        """Вызывается из фонового потока, когда услышали «Бутуз»"""
+        if self._voice_recording or self._voice_busy:
+            return
+        self.page.run_thread(self._wake_ui)
+    
+    def _wake_ui(self):
+        self._show_toast("🐶 Бутуз слушает! Говорите команду...", color="#f59e0b", duration=3000)
+        if self.wake_listener:
+            self.wake_listener.paused.set()
+        import threading as _th
+        _th.Thread(target=self._wake_command_loop, daemon=True).start()
+    
+    def _wake_command_loop(self):
+        try:
+            import time as _time
+            from voice_input import record_until_silence, transcribe
+            _time.sleep(0.5)  # даём договорить «...бутуз» и не попасть в команду
+            audio = record_until_silence()
+            text = transcribe(audio)
+            self.page.run_thread(self._wake_apply, text)
+        except Exception as ex:
+            print(f"[VOICE] Ошибка wake-команды: {ex}", flush=True)
+            self.page.run_thread(self._wake_apply, "")
+    
+    def _wake_apply(self, text):
+        if self.wake_listener:
+            self.wake_listener.paused.clear()
+        text = (text or "").strip()
+        if not text:
+            self._show_toast("Не расслышал команду", color="#ef4444")
+            return
+        self.input_field.value = text
+        self.input_field.update()
+        self._show_toast(f"Команда: {text[:60]}", color="#10b981")
+        self._handle_send(None)  # hands-free: сразу отправляем
+    
+    def _on_wake_switch(self, e):
+        if e.control.value:
+            if self.wake_listener is None or not self.wake_listener.is_alive():
+                self._start_wake_listener()
+            else:
+                self._show_toast("Уже слушает «Бутуз»", color="#10b981")
+        else:
+            self._stop_wake_listener()
+
     def _send_example(self, text):
         self.input_field.value = text
         self._handle_send(None)
@@ -1626,6 +1761,13 @@ class AviationRAGApp:
             color=self.theme["text_primary"],
             label="Выберите модель",
         )
+        wake_switch = ft.Switch(
+            label="Голосовая активация «Бутуз»",
+            value=self.wake_listener is not None and self.wake_listener.is_alive(),
+            active_color=self.theme["accent"],
+            on_change=self._on_wake_switch,
+        )
+        
         status_lbl = ft.Text(f"Текущая: {self.current_model_display}", color=self.theme["status_ready"], size=12)
 
         def apply_model(e):
@@ -1842,6 +1984,7 @@ class AviationRAGApp:
                 ft.Text("LLM Модель", size=14, weight=ft.FontWeight.BOLD),
                 model_dropdown,
                 status_lbl,
+                wake_switch,
                 ft.Divider(),
                 ft.Text("База знаний PRL-27", size=14, weight=ft.FontWeight.BOLD),
                 ft.Row([self.prl_folder_path, choose_prl_btn], spacing=10),
