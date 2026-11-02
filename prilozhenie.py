@@ -426,6 +426,22 @@ class AviationRAGApp:
             ], expand=True, spacing=0)
         )
 
+    def _image_to_base64(self, image_path: str) -> str:
+        """Кодирует изображение в base64 для vision-модели"""
+        import base64
+        with open(image_path, 'rb') as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+
+    def _get_image_mime(self, path: str) -> str:
+        """Возвращает MIME-тип по расширению"""
+        ext = Path(path).suffix.lower()
+        return {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+        }.get(ext, 'image/jpeg')
+
     def _render_content_with_code_blocks(self, content: str):
         import re
         widgets = []
@@ -563,7 +579,8 @@ class AviationRAGApp:
                 on_token=on_token,
                 cancel_flag=self._stream_cancel_flag,
                 user_context=user_context if user_context else None,
-                recent_file_context=recent_file_context, 
+                recent_file_context=recent_file_context,
+                attachments=attachments,
             )
             
             # Распаковка кортежа
@@ -619,7 +636,6 @@ class AviationRAGApp:
         self.page.update()
 
     def _update_pending_attachments_display(self):
-        """Обновляет отображение прикреплённых файлов над полем ввода"""
         if not hasattr(self, '_pending_attachments'):
             self._pending_attachments = []
         
@@ -627,13 +643,39 @@ class AviationRAGApp:
         
         if self._pending_attachments:
             for att in self._pending_attachments:
-                chip = ft.Chip(
-                    label=ft.Text(att['name'], size=11, color="#dbeafe"),
-                    bgcolor="#1e3a8a",
-                    padding=4,
-                    delete_icon=ft.Icon(ft.Icons.CLOSE, size=14, color="#94a3b8"),
-                    on_delete=lambda e, name=att['name']: self._remove_pending_attachment(name),
-                )
+                path = Path(att['path'])
+                is_image = path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp']
+                
+                if is_image:
+                    # Для картинок: chip с миниатюрой + имя файла
+                    chip = ft.Container(
+                        content=ft.Row([
+                            ft.Image(
+                                src=att['path'],  # Flet умеет подгружать по локальному пути
+                                width=32, height=32,
+                                fit=ft.ImageFit.COVER,
+                                border_radius=4,
+                            ),
+                            ft.Text(att['name'], size=11, color="#dbeafe"),
+                            ft.IconButton(
+                                ft.Icons.CLOSE, icon_size=14,
+                                on_click=lambda e, name=att['name']: self._remove_pending_attachment(name),
+                                style=ft.ButtonStyle(color="#94a3b8", padding=0),
+                            ),
+                        ], spacing=6),
+                        bgcolor="#1e3a8a",
+                        padding=ft.padding.only(left=4, right=4, top=4, bottom=4),
+                        border_radius=6,
+                    )
+                else:
+                    # Для документов: обычный chip (как раньше)
+                    chip = ft.Chip(
+                        label=ft.Text(att['name'], size=11, color="#dbeafe"),
+                        bgcolor="#1e3a8a", padding=4,
+                        delete_icon=ft.Icon(ft.Icons.CLOSE, size=14, color="#94a3b8"),
+                        on_delete=lambda e, name=att['name']: self._remove_pending_attachment(name),
+                    )
+                
                 self.attachments_row.controls.append(chip)
             self.attachments_row.visible = True
         else:
@@ -753,20 +795,34 @@ class AviationRAGApp:
                     )
             
             # Потом файлы
+            allowed_exts = {'.pdf', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'}
+            files_found = 0
+            
             for item in items:
-                if item.is_file() and item.suffix.lower() in ['.pdf', '.docx', '.txt', '.md']:
-                    list_column.controls.append(
-                        ft.Container(
-                            content=ft.Row([
-                                ft.Icon(ft.Icons.DESCRIPTION, size=18, color="#60a5fa"),
-                                ft.Text(item.name, size=13, color=self.theme["text_primary"]),
-                            ], spacing=8),
-                            padding=ft.padding.symmetric(horizontal=8, vertical=6),
-                            border_radius=6,
-                            ink=True,
-                            on_click=lambda e, ff=item: self._select_file(str(ff), ff.name),
+                if item.is_file():
+                    ext = item.suffix.lower()
+                    if ext in allowed_exts:
+                        files_found += 1
+                        list_column.controls.append(
+                            ft.Container(
+                                content=ft.Row([
+                                    ft.Icon(ft.Icons.IMAGE if ext in {'.png', '.jpg', '.jpeg', '.webp'} else ft.Icons.DESCRIPTION, 
+                                            size=18, color="#60a5fa"),
+                                    ft.Text(item.name, size=13, color=self.theme["text_primary"]),
+                                ], spacing=8),
+                                padding=ft.padding.symmetric(horizontal=8, vertical=6),
+                                border_radius=6,
+                                ink=True,
+                                on_click=lambda e, ff=item: self._select_file(str(ff), ff.name),
+                            )
                         )
-                    )
+            
+            print(f"[DEBUG] В папке {p.name} найдено {files_found} разрешённых файлов", flush=True)
+            
+            if not items or (len(items) == files_found and files_found == 0):
+                list_column.controls.append(
+                    ft.Text("(нет файлов или папок для отображения)", size=12, color=self.theme["text_secondary"])
+                )
             
             if not items:
                 list_column.controls.append(

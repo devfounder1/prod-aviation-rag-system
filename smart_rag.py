@@ -1,6 +1,8 @@
 """
 Модуль Smart RAG с Роутингом и Parent-Child Retrieval.
 """
+import base64
+from pathlib import Path
 import re 
 import logging
 from langchain_openai import ChatOpenAI
@@ -50,7 +52,20 @@ class SmartRAG:
             streaming=True
         )
         
-        # 4. Промпт для РОУТЕРА
+        # Vision-модель для схем и чертежей
+        try:
+            self.vision_llm = ChatOpenAI(
+                model="qwen2.5vl:7b",
+                base_url=settings.llm_base_url,  # тот же Ollama endpoint
+                api_key=settings.llm_api_key,
+                temperature=0.1,
+                max_tokens=2048,
+            )
+            print("[SmartRAG] Vision-модель (qwen2.5vl:7b) готова", flush=True)
+        except Exception as e:
+            print(f"[SmartRAG] Vision-модель недоступна: {e}", flush=True)
+            self.vision_llm = None
+        
         # 4. Промпт для РОУТЕРА (УЛУЧШЕННЫЙ v2)
         self.router_prompt = ChatPromptTemplate.from_messages([
             ("system", """Ты — BUTUZIK.AI, диспетчер технической поддержки авиационного оборудования.
@@ -143,7 +158,59 @@ class SmartRAG:
 {context}"""),
             ("human", "Вопрос пользователя: {question}")
         ])
-   
+
+    def _image_to_base64(self, image_path: str) -> str:
+        """Кодирует изображение в base64 для отправки в vision-модель"""
+        with open(image_path, 'rb') as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+
+    def _get_image_mime(self, path: str) -> str:
+        """Возвращает MIME-тип изображения по его расширению"""
+        ext = Path(path).suffix.lower()
+        return {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+        }.get(ext, 'image/jpeg')
+
+    def _query_vision(self, question: str, image_paths: list) -> str:
+        """Запрос к vision-модели с картинками"""
+        if not self.vision_llm:
+            return "Vision-модель недоступна. Установите qwen2.5vl:7b через Ollama."
+        
+        # Собираем content в OpenAI-формате
+        content = [{"type": "text", "text": question}]
+        for img_path in image_paths:
+            b64 = self._image_to_base64(img_path)
+            mime = self._get_image_mime(img_path)
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"}
+            })
+        
+        # Промпт инженера по схемам
+        system_prompt = """Ты — старший инженер по авиационному оборудованию ПРЛ-27СМ.
+    Анализируй технические схемы, чертежи, графики и фотографии оборудования.
+
+    ПРАВИЛА:
+    1. Описывай компоненты: микросхемы (DD1, DD2...), разъёмы (XS1, XP2...), 
+    конденсаторы, резисторы, транзисторы — с их обозначениями на схеме.
+    2. Читай все подписи, номиналы, маркировки на схеме.
+    3. Описывай электрические цепи и их назначение.
+    4. Если спрашивают про конкретный элемент — указывай его позицию на схеме.
+    5. Используй технический язык, не упрощай терминологию.
+    6. Если что-то неразборчиво на схеме — честно об этом скажи.
+    7. НЕ придумывай то, чего нет на изображении."""
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content},
+        ]
+        
+        response = self.vision_llm.invoke(messages)
+        return response.content
+ 
     def route(self, question: str, chat_history: list = None) -> str:
         """Определяет интент с учётом истории диалога"""
         history_context = ""
@@ -343,19 +410,48 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
-    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None) -> str:
+    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None, attachments=None) -> str:
         print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
-
-        # Формируем текстовый контекст истории
+        
+        # 1. Формируем текстовый контекст истории
         history_text = ""
         if chat_history and len(chat_history) > 0:
             last_msgs = chat_history[-4:]
             history_text = "\n".join([f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:500]}" for m in last_msgs])
         
-        # 1. СНАЧАЛА определяем интент С УЧЁТОМ ИСТОРИИ
+        # 2. СНАЧАЛА определяем интент (ОДИН раз для всего метода!)
         intent = self.route(question, chat_history)
         print(f"[STREAM] Интент: {intent}", flush=True)
         
+        # 3. 🆕 ОБРАБОТКА ИЗОБРАЖЕНИЙ (теперь intent уже известен и можно его использовать)
+        image_paths = []
+        if attachments:
+            image_paths = [
+                att['path'] for att in attachments 
+                if att['path'].lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
+            ]
+
+        if image_paths:
+            print(f"[STREAM] Vision-запрос: {len(image_paths)} изображений", flush=True)
+            
+            # Vision-модель описывает схему
+            vision_answer = self._query_vision(question, image_paths)
+            image_names = [Path(p).name for p in image_paths]
+            self.last_sources = image_names
+            
+            # Опционально: дополняем ответ поиском по RAG, если вопрос технический
+            if intent == "SEARCH":
+                search_query = self.rewrite_query(question)
+                docs = self.retriever.search(search_query, k=3)
+                if docs:
+                    rag_context = "\n".join([d.page_content for d in docs[:2]])
+                    vision_answer += f"\n\n---\n\n📚 **Дополнительно из документации ПРЛ-27СМ:**\n{rag_context}"
+                    rag_sources = list(set(d.metadata.get('filename', '') for d in docs if d.metadata.get('filename')))
+                    self.last_sources = image_names + rag_sources
+            
+            return vision_answer, self.last_sources
+        
+        # 4. Вспомогательная функция для стриминга
         def _generate_stream(chain, context, question, hist_text):
             full_response = ""
             prompt_input = {"context": context, "question": question, "history": hist_text}
@@ -369,18 +465,15 @@ class SmartRAG:
                         on_token(full_response)
             return full_response
         
-        # ПРИКРЕПЛЁННЫЕ ФАЙЛЫ — высший приоритет, БЕЗ подмешивания базы знаний
+        # 5. ПРИКРЕПЛЁННЫЕ ТЕКСТОВЫЕ ФАЙЛЫ — высший приоритет
         if user_context:
             print(f"[STREAM] Контекст из прикреплённых файлов: {len(user_context)} симв. — используем ТОЛЬКО его", flush=True)
-            
-            # ВАЖНО: глобальную базу НЕ подключаем, чтобы модель не ушла в документацию ПРЛ
             combined_context = user_context
             
             real_sources = re.findall(r'\[Прикреплённый файл:\s*([^\]]+)\]', user_context)
             self.last_sources = real_sources
             self.last_context = combined_context
             
-            # Используем специальный промпт для файлов (без персоны инженера ПРЛ)
             chain = self.file_prompt | self.llm
             full_response = _generate_stream(chain, combined_context, question, history_text)
             
@@ -390,28 +483,17 @@ class SmartRAG:
             print("[STREAM] Успешный ответ сформирован (по прикреплённому файлу).", flush=True)
             return f"[С поиском]:\n{full_response}", real_sources
         
-        # 1. СНАЧАЛА определяем интент С УЧЁТОМ ИСТОРИИ (только если файлов нет)
-        intent = self.route(question, chat_history)
-        print(f"[STREAM] Интент: {intent}", flush=True)
-        
-        # УТОЧНЯЮЩИЙ вопрос по недавно прикреплённому файлу
-        # НО ТОЛЬКО если вопрос НЕ про технические темы ПРЛ-27СМ
+        # 6. УТОЧНЯЮЩИЙ вопрос по недавно прикреплённому файлу
         if recent_file_context and intent in ("CHAT", "USERDOC"):
-            # Ключевые маркеры, которые означают "это вопрос про базу ПРЛ, не про файл"
             prl_keywords = [
-                # Технические темы ПРЛ-27СМ
                 'ппс', 'pps', 'прл', 'мку', 'пои', 'уми', 'прд',
                 '276гг', '276цц', 'д2хк', 'шкаф', 'излучение', 
                 'протокол передачи', 'синхронизатор', 'юстировк', 'топопривязк',
                 'сигнал pps', 'мезонин', 'dsp', 'плис', 'pci', 'srio',
-                
-                # Маркеры самоидентификации ассистента (НЕ по файлу!)
                 'как тебя зовут', 'твое имя', 'твоё имя', 'кто ты', 
                 'что ты такое', 'как твое имя', 'представься',
                 'ты кто', 'ты робот', 'ты человек', 'ты ии', 'ты нейросеть',
                 'твой создатель', 'кто тебя создал', 'ты украл',
-                
-                # Опасные темы (НЕ по файлу, идти в обычный CHAT)
                 'вирус', 'троян', 'убийств', 'убить', 'яд', 'отрав',
                 'взлом', 'хакер', 'hack', 'malware', 'exploit',
             ]
@@ -420,7 +502,6 @@ class SmartRAG:
             
             if not has_prl_marker:
                 print(f"[STREAM] Уточнение по файлу: использую сохранённый контекст ({len(recent_file_context)} симв.)", flush=True)
-                
                 real_sources = re.findall(r'\[Прикреплённый файл:\s*([^\]]+)\]', recent_file_context)
                 self.last_sources = real_sources
                 self.last_context = recent_file_context
@@ -435,8 +516,7 @@ class SmartRAG:
                 return f"[С поиском]:\n{full_response}", real_sources
             else:
                 print(f"[STREAM] Вопрос содержит тех. маркеры ПРЛ — пропускаю сохранённый файл, иду в базу знаний", flush=True)
-                # НЕ возвращаемся, а идём дальше по пайплайну (SEARCH или обычный CHAT)
-        
+                
         # 2. CHAT mode
         if intent == "CHAT":
             has_filename = re.search(r'[\w\-\s]+\.(?:pdf|docx|txt|md)', question, re.IGNORECASE)
