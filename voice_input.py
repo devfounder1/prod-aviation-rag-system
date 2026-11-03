@@ -7,11 +7,28 @@ import numpy as np
 import sounddevice as sd
 
 SAMPLE_RATE = 16000
-WAKE_WORDS = ("бутуз", "бутуза", "путуз", "бутус", "будус", "бутусь", "будуз")
+WAKE_WORDS = (
+    "бутуз", "бутуза", "путуз", "бутус", "будус", "бутусь", "будуз",
+    "будусь", "ампетус", "бит", "готовь"  # добавь всё, что слышит модель
+)
 
 _transcriber_lock = threading.Lock()
 _transcriber = None
 
+def _fuzzy_match(heard: str, targets: tuple) -> bool:
+    """Проверяет, похоже ли услышанное слово на одно из целевых"""
+    from difflib import SequenceMatcher
+    
+    heard_clean = heard.strip().lower().replace(" ", "")
+    for target in targets:
+        # Точное вхождение
+        if target in heard_clean:
+            return True
+        # Похожесть > 0.7 (например "бутуз" и "будусь" похожи на 0.8)
+        ratio = SequenceMatcher(None, heard_clean, target).ratio()
+        if ratio > 0.7:
+            return True
+    return False
 
 def _load_with_retry(factory, attempts=3, delay=5):
     import time
@@ -32,8 +49,8 @@ def get_transcriber():
         if _transcriber is None:
             from faster_whisper import WhisperModel
             print("[VOICE] Загрузка моделей whisper...", flush=True)
-            wake = _load_with_retry(lambda: WhisperModel("base", device="cpu", compute_type="int8"))
-            main = _load_with_retry(lambda: WhisperModel("base", device="cpu", compute_type="int8"))
+            wake = _load_with_retry(lambda: WhisperModel("base", device="cpu", compute_type="int8"))  # для wake-word (быстро)
+            main = _load_with_retry(lambda: WhisperModel("small", device="cpu", compute_type="int8"))  # для команд (точно)
             _transcriber = (wake, main)
             print("[VOICE] Модели whisper готовы", flush=True)
         return _transcriber
@@ -125,7 +142,7 @@ class WakeWordListener:
                 time.sleep(0.5)
                 continue
             
-            # 🆕 ТЕПЕРЬ ЭТО ВНУТРИ ЦИКЛА (правильные отступы!)
+            # ТЕПЕРЬ ЭТО ВНУТРИ ЦИКЛА (правильные отступы!)
             try:
                 chunk = record_until_stop_stopless(2.0)
                 text = transcribe(chunk, model_kind="wake")
@@ -133,8 +150,8 @@ class WakeWordListener:
                 clean_text = text.strip().lower().strip(".,!?;: ")
                 print(f"[VOICE] Услышал: '{clean_text}'", flush=True)
                 
-                if clean_text and any(w in clean_text for w in WAKE_WORDS):
-                    print(f"[VOICE] ✅ Wake-word распознан: '{clean_text}'", flush=True)
+                if clean_text and _fuzzy_match(clean_text, WAKE_WORDS):
+                    print(f"[VOICE] Wake-word распознан (fuzzy): '{clean_text}'", flush=True)
                     self.on_wake()
                 elif clean_text:
                     # Если что-то распознано, но не наш wake-word — логируем для отладки

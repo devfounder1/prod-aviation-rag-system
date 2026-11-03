@@ -11,6 +11,7 @@ from config import settings
 from vector_store import VectorStoreManager
 from hybrid_retriever import HybridRetriever
 from langchain_core.callbacks import BaseCallbackHandler
+from ai_agent import CodeAgent
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -51,7 +52,15 @@ class SmartRAG:
             max_tokens=4096,
             streaming=True
         )
-        
+
+        # Инициализация AI Агента для выполнения кода
+        try:
+            self.code_agent = CodeAgent(llm=self.llm)
+            print("[SmartRAG] AI Агент (CodeAgent) инициализирован", flush=True)
+        except Exception as e:
+            print(f"[SmartRAG] Ошибка инициализации агента: {e}", flush=True)
+            self.code_agent = None
+
         # Vision-модель для схем и чертежей
         try:
             self.vision_llm = ChatOpenAI(
@@ -66,25 +75,22 @@ class SmartRAG:
             print(f"[SmartRAG] Vision-модель недоступна: {e}", flush=True)
             self.vision_llm = None
         
-        # 4. Промпт для РОУТЕРА (УЛУЧШЕННЫЙ v2)
+        # 4. Промпт для РОУТЕРА (ЖЕСТКИЙ v3)
         self.router_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Ты — BUTUZIK.AI, диспетчер технической поддержки авиационного оборудования.
-Проанализируй вопрос и определи, где искать ответ.
+            ("system", """Ты — BUTUZIK.AI, диспетчер технической поддержки.
+Твоя задача: строго классифицировать вопрос.
 
-ПРАВИЛА (приоритет по порядку):
-1. **USERDOC** — если в вопросе есть:
-   - Имя файла с расширением (.pdf, .docx, .txt, .md)
-   - Слова: "мой файл", "прикрепленный документ", "в резюме", "загруженный документ"
-   - Вопросы про личные документы, отчеты, резюме (не технические)
+ПРАВИЛА (строгий приоритет, проверяй по порядку):
+1. **SEARCH** — ВЫБИРАЙ ЭТО ОБЯЗАТЕЛЬНО, если в тексте есть ХОТЯ БЫ ОДНО из этих слов (в любом падеже и контексте, даже с разговорными словами):
+   - "pps", "ппс", "сигнал", "мку", "уми", "прд", "пои"
+   - "276гг", "276цц", "шкаф", "протокол", "излучение", "синхронизация"
+   - Фразы: "что такое", "как работает", "расскажи про", "для чего"
    
-2. **SEARCH** — если вопрос касается:
-   - Оборудования ПРЛ-27СМ (шкафы 276ГГ02, 276ЦЦ02, платы МКУ, УМИ, ПОИ)
-   - Технических инструкций, протоколов, схем, кодов ошибок
-   - Команд, параметров, алгоритмов работы оборудования
-   
-3. **CHAT** — всё остальное (приветствия, благодарности, общие вопросы)
+2. **USERDOC** — если есть: ".pdf", ".docx", "мой файл", "резюме", "документ".
 
-Отвечай ТОЛЬКО одним словом: USERDOC, SEARCH или CHAT"""),
+3. **CHAT** — ТОЛЬКО если это чистое приветствие ("привет", "как дела", "спасибо") И в тексте НЕТ ни одного технического слова из пункта 1.
+
+Отвечай СТРОГО одним словом: USERDOC, SEARCH или CHAT"""),
             ("human", "{question}")
         ])
         
@@ -212,39 +218,63 @@ class SmartRAG:
         return response.content
  
     def route(self, question: str, chat_history: list = None) -> str:
-        """Определяет интент с учётом истории диалога"""
+        """Гибридный роутер: сначала ключевые слова, потом LLM"""
+        
+        # 1. Формируем контекст истории (если есть)
         history_context = ""
         if chat_history and len(chat_history) > 0:
-            # Берем последние 4 сообщения (2 пары вопрос-ответ)
             last_msgs = chat_history[-4:]
             history_context = "ПРЕДЫДУЩИЙ ДИАЛОГ:\n" + "\n".join([
                 f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:400]}" 
                 for m in last_msgs
             ]) + "\n"
         
+        question_lower = question.lower()
+        
+        # 🆕 2. ЖЁСТКАЯ ПРОВЕРКА КЛЮЧЕВЫХ СЛОВ (быстро и надёжно)
+        # Если есть технические термины — сразу SEARCH
+        tech_keywords = [
+            'pps', 'ппс', 'сигнал', 'мку', 'уми', 'прд', 'пои', 'прл',
+            '276гг', '276цц', 'шкаф', 'протокол', 'излучение', 'синхронизатор',
+            'алгоритм', 'плата', 'модуль', 'диагностика', 'юстировка'
+        ]
+        if any(kw in question_lower for kw in tech_keywords):
+            print(f"[ROUTER] Ключевые слова → SEARCH", flush=True)
+            return "SEARCH"
+        
+        # 🆕 3. Проверка на вопросы "что/как/почему"
+        if any(q in question_lower for q in ['что такое', 'как ', 'как-', 'почему', 'для чего', 'расскажи']):
+            print(f"[ROUTER] Вопрос → SEARCH", flush=True)
+            return "SEARCH"
+        
+        # 4. Проверка на USERDOC
+        if any(ext in question_lower for ext in ['.pdf', '.docx', '.txt', '.md']):
+            return "USERDOC"
+        if any(word in question_lower for word in ['мой файл', 'прикреплён', 'загружен', 'резюме']):
+            return "USERDOC"
+        
+        # 5. Только если ничего не нашли — спрашиваем LLM
+        print(f"[ROUTER] Отправляю в LLM: '{question}'", flush=True)
+        
         router_prompt = ChatPromptTemplate.from_messages([
             ("system", f"""Ты — BUTUZIK.AI, диспетчер технической поддержки.
 
 {history_context}
 
-ПРАВИЛА определения интента (приоритет по порядку):
-1. **CHAT** — если:
-   - Это приветствие, благодарность, общий бытовой вопрос.
-   - Это **уточнение** к предыдущему ответу (слова: "подробнее", "как именно", "а можно ещё", "распиши"), И предыдущая тема НЕ была сугубо технической про ПРЛ-27СМ.
-   - Вопрос НЕ содержит технических терминов ПРЛ-27СМ.
-   
-2. **SEARCH** — если:
-   - Вопрос про оборудование ПРЛ-27СМ (шкафы, платы, протоколы, сигналы).
-   - Это уточнение к предыдущему техническому ответу про ПРЛ-27СМ.
-   
-3. **USERDOC** — если вопрос про конкретный загруженный пользователем файл.
+ПРАВИЛА:
+1. **USERDOC** — если вопрос про прикреплённый файл или документ
+2. **SEARCH** — если вопрос про оборудование, инструкции, параметры
+3. **CHAT** — приветствия, благодарности, общие вопросы
 
 Отвечай ТОЛЬКО одним словом: USERDOC, SEARCH или CHAT"""),
-            ("human", "Текущий вопрос пользователя: {question}")
+            ("human", "{question}")
         ])
         
         chain = router_prompt | self.llm
         response = chain.invoke({"question": question}).content.strip().upper()
+        
+        print(f"[ROUTER] LLM ответила: '{response}'", flush=True)
+        
         for intent in ("USERDOC", "SEARCH", "CHAT"):
             if intent in response:
                 return intent
@@ -410,8 +440,24 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
-    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None, attachments=None) -> str:
+    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None, attachments=None, agent_mode: bool = False) -> str:
+        # Очищаем вопрос от лишней пунктуации (голосовой ввод)
+        question = question.strip().rstrip('.!?;:').strip()
         print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
+
+        # РЕЖИМ АГЕНТА: перехватывает управление, если включён
+        if agent_mode and self.code_agent:
+            print("[STREAM] Активирован режим АГЕНТА", flush=True)
+            
+            # Агент не использует стриминг токенов так же, как обычный чат, 
+            # поэтому мы имитируем стриминг или просто возвращаем полный ответ
+            if on_token:
+                on_token("Агент думает и пишет код... (это может занять до 30 секунд)")
+            
+            agent_response = self.code_agent.run(question)
+            self.last_sources = ["agent_workspace (Агент сгенерировал файлы)"]
+            
+            return f"[Режим Агента]:\n{agent_response}", self.last_sources 
         
         # 1. Формируем текстовый контекст истории
         history_text = ""

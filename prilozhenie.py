@@ -166,6 +166,10 @@ class AviationRAGApp:
         self.chat_list_controls = {}
         self.attachments_row = None  # Для хранения строки с чипами файлов
         
+        self._wake_busy = False
+        
+        self.agent_mode = False
+        
         self._streaming_chat_id = None
         self._streaming_row = None
         self._last_prl_path = self._load_prl_path()
@@ -417,23 +421,32 @@ class AviationRAGApp:
             on_click=self._toggle_voice_input,
         )
         
+        # ЧЕКБОКС РЕЖИМА АГЕНТА
+        self.agent_checkbox = ft.Checkbox(
+            label="Режим Агента (написание кода)",
+            value=False,
+            active_color="#f59e0b",
+            on_change=lambda e: setattr(self, 'agent_mode', e.control.value)
+        )
+        
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
+                self.agent_checkbox,   # ЧЕКБОКС (над полем ввода)
                 ft.Row([
-                    self.mic_button,   # 🆕 МИКРОФОН (первым в строке)
+                    self.mic_button,
                     self._make_icon_button(
-                        self.assets.get("add", self.assets.get("new_chat")), # Безопасный фоллбэк
+                        self.assets.get("add", self.assets.get("new_chat")),
                         on_click=self._handle_attach_click,
                         tooltip="Прикрепить документ",
-                        size=36, # Сделали крупнее
+                        size=36,
                     ),
                     self.input_field,
                     self._make_icon_button(
                         self.assets["send"],
                         on_click=self._handle_send,
                         tooltip="Отправить",
-                        size=32, # Сделали крупнее
+                        size=32,
                         bgcolor=self.theme["accent"],
                     ),
                 ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.END)
@@ -554,7 +567,7 @@ class AviationRAGApp:
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
-    def _process(self, user_input: str, attachments=None):
+    def _process(self, user_input: str, attachments=None, agent_mode: bool = False):
         try:
             if self.rag_system is None:
                 self.rag_system = SmartRAG(model_name=self.current_model_ollama)
@@ -605,6 +618,7 @@ class AviationRAGApp:
                 user_context=user_context if user_context else None,
                 recent_file_context=recent_file_context,
                 attachments=attachments,
+                agent_mode=agent_mode,  # Передаём флаг режима агента
             )
             
             # Распаковка кортежа
@@ -1271,7 +1285,11 @@ class AviationRAGApp:
         self.page.update()
         
         # Передаём прикреплённые файлы в обработчик
-        threading.Thread(target=self._process, args=(text, pending_attachments), daemon=True).start()
+        threading.Thread(
+            target=self._process, 
+            args=(text, pending_attachments, self.agent_mode),  #добавили agent_mode
+            daemon=True
+        ).start()
 
     # ============ ГОЛОСОВОЙ ВВОД ============
     
@@ -1339,12 +1357,20 @@ class AviationRAGApp:
             self.wake_listener.stop()
     
     def _on_wake_word(self):
-        """Вызывается из фонового потока, когда услышали «Бутуз»"""
-        if self._voice_recording or self._voice_busy:
+        """Вызывается ИЗ ПОТОКА СЛУШАТЕЛЯ — паузу ставим сразу, без задержек"""
+        if self._voice_recording or self._voice_busy or self._wake_busy:
             return
+        self._wake_busy = True
+        if self.wake_listener:
+            self.wake_listener.paused.set()   # мгновенно, в этом же потоке
         self.page.run_thread(self._wake_ui)
     
     def _wake_ui(self):
+        try:
+            import subprocess
+            subprocess.Popen(['afplay', '/System/Library/Sounds/Glass.aiff'])  # 🔔 ding!
+        except Exception:
+            pass
         self._show_toast("🐶 Бутуз слушает! Говорите команду...", color="#f59e0b", duration=3000)
         if self.wake_listener:
             self.wake_listener.paused.set()
@@ -1354,10 +1380,18 @@ class AviationRAGApp:
     def _wake_command_loop(self):
         try:
             import time as _time
-            from voice_input import record_until_silence, transcribe
-            _time.sleep(0.5)  # даём договорить «...бутуз» и не попасть в команду
+            from voice_input import record_until_silence, transcribe, WAKE_WORDS, _fuzzy_match
+            _time.sleep(1.0)  # даём слову «Бутуз» полностью отзвучать
             audio = record_until_silence()
             text = transcribe(audio)
+            
+            # Если поймали хвост wake-слова или огрызок — слушаем ещё раз
+            if text and (_fuzzy_match(text, WAKE_WORDS) or len(text.strip()) < 4):
+                print(f"[VOICE] Пойман хвост wake-слова: '{text}' — слушаю команду заново", flush=True)
+                self.page.run_thread(self._show_toast, "🐶 Слушаю! Скажи команду...", "#f59e0b", 2500)
+                audio = record_until_silence()
+                text = transcribe(audio)
+            
             self.page.run_thread(self._wake_apply, text)
         except Exception as ex:
             print(f"[VOICE] Ошибка wake-команды: {ex}", flush=True)
@@ -1366,14 +1400,39 @@ class AviationRAGApp:
     def _wake_apply(self, text):
         if self.wake_listener:
             self.wake_listener.paused.clear()
-        text = (text or "").strip()
-        if not text:
-            self._show_toast("Не расслышал команду", color="#ef4444")
+        self._wake_busy = False
+        
+        text = (text or "").strip().lower()
+        
+        # 1. Убираем слова-паразиты, которые сбивают роутер
+        for filler in ["слушай", "ну", "эм", "ээ", "короче", "так", "вот"]:
+            text = text.replace(filler, "").strip()
+        
+        # Убираем лишние пробелы и знаки препинания в начале
+        text = text.lstrip(".,!?;: ").capitalize()
+        
+        #  2. Никогда не отправляем wake-слово или пустоту
+        if not text or len(text) < 4:
+            self._show_toast("Не расслышал команду 🙁", color="#ef4444")
             return
+            
+        try:
+            from voice_input import WAKE_WORDS, _fuzzy_match
+            if _fuzzy_match(text.lower(), WAKE_WORDS):
+                self._show_toast("Это было будильное слово 😄", color="#f59e0b")
+                return
+        except Exception:
+            pass
+        
+        # 3. Если вопрос короткий и технический, делаем его более формальным для роутера
+        if "pps" in text.lower() or "ппс" in text.lower() or "сигнал" in text.lower():
+            if not text.lower().startswith(("что такое", "как", "расскажи")):
+                text = "Что такое " + text
+        
         self.input_field.value = text
         self.input_field.update()
-        self._show_toast(f"Команда: {text[:60]}", color="#10b981")
-        self._handle_send(None)  # hands-free: сразу отправляем
+        self._show_toast(f"🐶 Команда: {text[:60]}", color="#10b981")
+        self._handle_send(None)
     
     def _on_wake_switch(self, e):
         if e.control.value:
