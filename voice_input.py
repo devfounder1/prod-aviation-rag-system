@@ -148,7 +148,7 @@ class WakeWordListener:
                 text = transcribe(chunk, model_kind="wake")
                 # Очищаем от пробелов, знаков препинания и приводим к нижнему регистру
                 clean_text = text.strip().lower().strip(".,!?;: ")
-                print(f"[VOICE] Услышал: '{clean_text}'", flush=True)
+                #print(f"[VOICE] Услышал: '{clean_text}'", flush=True)
                 
                 if clean_text and _fuzzy_match(clean_text, WAKE_WORDS):
                     print(f"[VOICE] Wake-word распознан (fuzzy): '{clean_text}'", flush=True)

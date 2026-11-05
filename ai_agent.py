@@ -18,7 +18,7 @@ class AgentState(TypedDict):
 
 
 class CodeAgent:
-    def __init__(self, llm: BaseChatModel, max_iterations: int = 3):
+    def __init__(self, llm: BaseChatModel, max_iterations: int = 8):  # Увеличили до 8
         # ИСПРАВЛЕНО: используем bind_tools для привязки инструментов
         self.llm = llm.bind_tools(ALL_TOOLS)
         self.tools = ALL_TOOLS
@@ -33,16 +33,24 @@ class CodeAgent:
 
 ПРАВИЛА РАБОТЫ:
 1. Анализируй задачу пользователя.
-2. Используй доступные инструменты (`read_file`, `write_file`, `list_directory`, `execute_python_code`) для решения задачи.
-3. **ЦИКЛ САМОКОРРЕКЦИИ:** Если `execute_python_code` возвращает ошибку (STDERR), НЕ сдавайся. Проанализируй ошибку, исправь код и запусти его снова. У тебя есть максимум {max_iterations} попытки на одну задачу.
-4. Если задача решена, кратко опиши пользователю, что было сделано, и покажи финальный результат или путь к созданному файлу.
-5. Если после {max_iterations} попыток код не работает, честно сообщи пользователю о последней ошибке и попроси уточнений.
-6. НИКОГДА не используй запрещённые модули (os.system, subprocess и т.д.), инструменты сами их заблокируют.
+2. Используй доступные инструменты: `read_file`, `write_file`, `list_directory`, `execute_python_code`, `search_knowledge_base`, `update_attached_file`.
+
+3. **СТРОГИЙ АЛГОРИТМ РЕДАКТИРОВАНИЯ КОДА (ДЕЛАЙ ПО ШАГАМ, КАЖДЫЙ ШАГ — ОТДЕЛЬНЫЙ ВЫЗОВ):**
+   - **ШАГ 1 (Чтение):** Прочитай файл через `read_file('attached/ИМЯ_ФАЙЛА')`. Запомни ВСЁ содержимое.
+   - **ШАГ 2 (Генерация):** В уме сформируй ПОЛНЫЙ новый код. Скопируй ВСЕ строки оригинала, добавь новые в нужные места. НИКОГДА не удаляй существующие print, комментарии или логику, если об этом прямо не просят.
+   - **ШАГ 3 (Внутренний тест):** Вызови `execute_python_code` с параметрами: `code="ПОЛНЫЙ_НОВЫЙ_КОД", require_approval=False`. Это запустит код в песочнице БЕЗ показа пользователю.
+   - **ШАГ 4 (Анализ и исправление):** 
+     * Если тест вернул ошибку (STDERR): проанализируй traceback, исправь код и повтори ШАГ 3.
+     * Если тест прошёл успешно (STDOUT без ошибок): переходи к ШАГУ 5.
+   - **ШАГ 5 (Финальное сохранение):** ТОЛЬКО после успешного теста вызови `update_attached_file(file_name="ИМЯ", new_content="ПОЛНЫЙ_ПРОВЕРЕННЫЙ_КОД")`. Это покажет код пользователю для финального одобрения и создаст .bak бэкап.
+
+4. НИКОГДА не вызывай `update_attached_file` без предварительного успешного тестирования через `execute_python_code(require_approval=False)`.
+5. Не пытайся сделать всё за одну итерацию. Используй 4-6 итераций на полный цикл.
+6. НИКОГДА не используй запрещённые модули (os.system, subprocess и т.д.).
 
 Доступные инструменты:
 {tools_description}
-
-Имя инструмента должно использоваться точно так, как указано выше."""
+"""
 
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -77,7 +85,13 @@ class CodeAgent:
         full_messages = self.prompt.format_messages(messages=messages)
         
         response = self.llm.invoke(full_messages)
-        
+
+        # Транслируем в UI, какой инструмент вызывается и с какими аргументами
+        if self._on_step and hasattr(response, 'tool_calls') and response.tool_calls:
+            for tc in response.tool_calls:
+                args_preview = str(tc.get('args', ''))[:400]
+                self._on_step(f"Вызываю инструмент: `{tc['name']}`\n```\n{args_preview}\n```")
+
         # Логируем мысль агента
         if hasattr(response, 'content') and response.content:
             print(f"[AGENT] Итерация {state['iteration'] + 1}: {response.content[:100]}...", flush=True)
@@ -89,13 +103,22 @@ class CodeAgent:
             "iteration": state["iteration"] + 1
         }
     
+    def _run_tools(self, state: AgentState) -> dict:
+        """Выполняет инструменты и транслирует результаты в UI"""
+        result = self.tool_node.invoke(state)   # Правильный вызов в LangGraph 1.x
+        if self._on_step:
+            for msg in result.get("messages", []):
+                content = msg.content if hasattr(msg, 'content') else str(msg)
+                self._on_step(f"Результат инструмента:\n```\n{content[:400]}\n```")
+        return result   
+    
     def _build_graph(self):
         """Строит граф агента"""
         workflow = StateGraph(AgentState)
         
         # Добавляем узлы
         workflow.add_node("agent", self._call_model)
-        workflow.add_node("tools", self.tool_node)
+        workflow.add_node("tools", self._run_tools)
         
         # Определяем точки входа
         workflow.add_edge(START, "agent")
@@ -115,8 +138,9 @@ class CodeAgent:
         
         return workflow.compile()
     
-    def run(self, task: str) -> str:
+    def run(self, task: str, on_step=None) -> str:
         """Запускает агента на выполнение задачи"""
+        self._on_step = on_step  # callback для живой трансляции шагов в UI
         try:
             print(f"\n[AGENT] Запуск агента с задачей: '{task}'", flush=True)
             

@@ -12,6 +12,7 @@ from vector_store import VectorStoreManager
 from hybrid_retriever import HybridRetriever
 from langchain_core.callbacks import BaseCallbackHandler
 from ai_agent import CodeAgent
+from model_registry import get_model_registry
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -26,9 +27,10 @@ class TokenCollector(BaseCallbackHandler):
         return "".join(self.tokens)
 
 class SmartRAG:
-    def __init__(self, model_name: str = "qwen2.5:14b"):
+    def __init__(self, model_name: str = "qwen2.5:14b", chat_id: str = "default"):
         print(f"[SmartRAG] Инициализация с моделью: {model_name}", flush=True)
         self.model_name = model_name
+        self.chat_id = chat_id
         
         try:
             # ... твой существующий код инициализации ...
@@ -36,12 +38,17 @@ class SmartRAG:
         except Exception as e:
             print(f"[SmartRAG] Ошибка инициализации: {e}", flush=True)
             raise
-        # Инициализация векторной базы (Parent-Child)
-        self.vs_manager = VectorStoreManager()
+        
+        # Инициализация векторной базы (Parent-Child) — передаем chat_id
+        self.vs_manager = VectorStoreManager(chat_id=chat_id)
         self.vs_manager.load()
         
         # Инициализация ГИБРИДНОГО ретривера (BM25 + Vector + RRF + Reranker)
         self.retriever = HybridRetriever(self.vs_manager)
+        
+        # Статистика кэша моделей
+        stats = get_model_registry().get_stats()
+        print(f"[INIT] Кэш моделей: {stats}", flush=True)
         
         # Инициализация LLM
         self.llm = ChatOpenAI(
@@ -55,7 +62,21 @@ class SmartRAG:
 
         # Инициализация AI Агента для выполнения кода
         try:
-            self.code_agent = CodeAgent(llm=self.llm)
+            self.code_agent = CodeAgent(llm=self.llm, max_iterations=8)  # Явно указываем 8
+                        # Подключаем базу знаний ПРЛ-27СМ к агенту
+            def _kb_search(query: str) -> str:
+                docs = self.retriever.search(query, k=3)
+                if not docs:
+                    return "В базе знаний ничего не найдено по этому запросу"
+                parts = []
+                for d in docs:
+                    fname = d.metadata.get('filename', 'Неизвестный файл')
+                    parts.append(f"[Источник: {fname}]\n{d.page_content}")
+                return "\n\n---\n\n".join(parts)
+            
+            from agent_tools import set_knowledge_search_callback
+            set_knowledge_search_callback(_kb_search)
+            print("[SmartRAG] База знаний ПРЛ-27СМ подключена к агенту", flush=True)
             print("[SmartRAG] AI Агент (CodeAgent) инициализирован", flush=True)
         except Exception as e:
             print(f"[SmartRAG] Ошибка инициализации агента: {e}", flush=True)
@@ -445,19 +466,25 @@ class SmartRAG:
         question = question.strip().rstrip('.!?;:').strip()
         print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
 
-        # РЕЖИМ АГЕНТА: перехватывает управление, если включён
         if agent_mode and self.code_agent:
-            print("[STREAM] Активирован режим АГЕНТА", flush=True)
+            print("[STREAM] 🤖 Активирован режим АГЕНТА", flush=True)
             
-            # Агент не использует стриминг токенов так же, как обычный чат, 
-            # поэтому мы имитируем стриминг или просто возвращаем полный ответ
-            if on_token:
-                on_token("Агент думает и пишет код... (это может занять до 30 секунд)")
+            # Живой лог шагов агента прямо в пузыре сообщения
+            steps_log = []
+            def on_step(text):
+                steps_log.append(text)
+                if on_token:
+                    on_token("Агент работает...\n\n" + "\n\n---\n\n".join(steps_log))
             
-            agent_response = self.code_agent.run(question)
+            agent_response = self.code_agent.run(question, on_step=on_step)
             self.last_sources = ["agent_workspace (Агент сгенерировал файлы)"]
             
-            return f"[Режим Агента]:\n{agent_response}", self.last_sources 
+            process_log = "\n\n---\n\n".join(steps_log) if steps_log else "(шагов не было)"
+            final_text = (
+                f"**Журнал выполнения:**\n\n{process_log}\n\n"
+                f"---\n\n**Итог:**\n{agent_response}"
+            )
+            return f"[Режим Агента]:\n{final_text}", self.last_sources
         
         # 1. Формируем текстовый контекст истории
         history_text = ""

@@ -161,6 +161,14 @@ class AviationRAGApp:
         
         self.chat_manager = ChatManager()
         self.rag_system = None
+        # Устанавливаем callback для подтверждения кода агентом
+        try:
+            from agent_tools import set_approval_callback
+            set_approval_callback(self._show_code_approval_dialog)
+            print("[APP] Callback подтверждения кода установлен", flush=True)
+        except Exception as e:
+            print(f"[APP] Не удалось установить callback: {e}", flush=True)
+        
         self.is_processing = False
         
         self.chat_list_controls = {}
@@ -258,6 +266,95 @@ class AviationRAGApp:
         
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
+
+    def _show_code_approval_dialog(self, code: str) -> bool:
+        """Показывает диалог подтверждения выполнения кода"""
+        import threading
+        
+        result = {"approved": False}
+        event = threading.Event()
+        dlg = None
+        
+        def on_approve(e):
+            result["approved"] = True
+            event.set()
+            try:
+                self.page.close(dlg)
+            except Exception:
+                pass
+        
+        def on_cancel(e):
+            result["approved"] = False
+            event.set()
+            try:
+                self.page.close(dlg)
+            except Exception:
+                pass
+        
+        # Прокручиваемый блок с кодом (ВМЕСТО max_height, которого нет в Flet 0.28)
+        code_box = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(
+                        code,
+                        font_family="monospace",
+                        size=12,
+                        color="#e2e8f0",
+                        selectable=True,
+                    ),
+                ],
+                scroll=ft.ScrollMode.AUTO,   # 🆕 прокрутка для длинного кода
+                height=350,                  # 🆕 фиксированная высота области
+                spacing=0,
+            ),
+            bgcolor="#1e293b",
+            padding=15,
+            border_radius=8,
+        )
+        
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=28),
+                ft.Text("Агент хочет выполнить код", size=18, weight=ft.FontWeight.BOLD),
+            ], spacing=10),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Text("Проверьте код перед выполнением:", size=14, color=self.theme["text_secondary"]),
+                    ft.Container(height=10),
+                    code_box,
+                    ft.Container(height=15),
+                    ft.Text(
+                        "Код будет выполнен в изолированной среде, но проверьте его на безопасность.",
+                        size=12,
+                        color="#f59e0b",
+                        italic=True,
+                    ),
+                ], tight=True, spacing=5),
+                width=700,
+                padding=20,
+            ),
+            actions=[
+                ft.TextButton(
+                    "❌ Отмена",
+                    on_click=on_cancel,
+                    style=ft.ButtonStyle(color="#94a3b8"),
+                ),
+                ft.ElevatedButton(
+                    "✅ Запустить код",
+                    on_click=on_approve,
+                    bgcolor="#10b981",
+                    color="white",
+                ),
+            ],
+        )
+        
+        self.page.open(dlg)
+        
+        # Ждём ответа максимум 2 минуты, иначе авто-отмена (агент не зависнет навсегда)
+        event.wait(timeout=120)
+        
+        return result["approved"]
 
     def _make_icon_button(self, icon_path, on_click, tooltip="", size=32, bgcolor=None):
         """Создает кнопку с кастомной PNG-иконкой"""
@@ -568,9 +665,14 @@ class AviationRAGApp:
         self._open_file_browser()
 
     def _process(self, user_input: str, attachments=None, agent_mode: bool = False):
+        code_files_note = []
         try:
             if self.rag_system is None:
-                self.rag_system = SmartRAG(model_name=self.current_model_ollama)
+                # Передаем chat_id в SmartRAG
+                self.rag_system = SmartRAG(
+                    model_name=self.current_model_ollama,
+                    chat_id=self.chat_manager.current_chat_id or "default"
+                )
             
             original_chat_id = self.chat_manager.current_chat_id
             self._streaming_chat_id = original_chat_id
@@ -583,13 +685,29 @@ class AviationRAGApp:
             chat = self.chat_manager.get_current_chat()
             chat_history = chat["messages"][-5:] if chat and chat["messages"] else []
             
-            # 🆕 ИЗВЛЕКАЕМ ТЕКСТ ИЗ ПРИКРЕПЛЁННЫХ ФАЙЛОВ И ЗАПОМИНАЕМ ЕГО ДЛЯ ЧАТА
+            # ИЗВЛЕКАЕМ ТЕКСТ ИЗ ПРИКРЕПЛЁННЫХ ФАЙЛОВ И ЗАПОМИНАЕМ ЕГО ДЛЯ ЧАТА
             user_context = ""
             recent_file_context = None
             
             if attachments:
                 print(f"[DEBUG] Обрабатываю {len(attachments)} прикреплённых файлов", flush=True)
                 for att in attachments:
+                    # КОД-ФАЙЛЫ: отдаём агенту, не тащим в текстовый контекст
+                    ext = Path(att['path']).suffix.lower()
+                    CODE_EXTS = ['.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', '.json', '.xml', '.ini', '.cfg']
+                    
+                    if ext in CODE_EXTS:
+                        from agent_tools import register_attached_file, AGENT_WORKSPACE
+                        attached_dir = AGENT_WORKSPACE / "attached"
+                        attached_dir.mkdir(exist_ok=True)
+                        fname = Path(att['path']).name
+                        (attached_dir / fname).write_bytes(Path(att['path']).read_bytes())
+                        register_attached_file(fname, att['path'])
+                        code_files_note.append(f"- {fname} (копия: attached/{fname})")
+                        print(f"[DEBUG] Код-файл зарегистрирован для агента: {fname}", flush=True)
+                        continue  # ← пропускаем обычное извлечение текста
+                    
+                    # Обычные файлы (PDF/DOCX/TXT) — как раньше
                     text = self._extract_text_from_file(att['path'])
                     if text:
                         user_context += f"\n\n[Прикреплённый файл: {att['name']}]\n{text}\n"
@@ -608,6 +726,13 @@ class AviationRAGApp:
                     return 
                 self._streaming_text = full_text
                 self.page.run_thread(self._update_streaming_message, full_text)
+            
+            if agent_mode and code_files_note:
+                user_input = (
+                    "ПРИКРЕПЛЁННЫЕ КОД-ФАЙЛЫ (читай через read_file('attached/...'), "
+                    "правь через update_attached_file):\n" + "\n".join(code_files_note) +
+                    f"\n\nЗАДАЧА ПОЛЬЗОВАТЕЛЯ: {user_input}"
+                )
             
             response_data = self.rag_system.query_stream(
                 user_input,
@@ -833,7 +958,8 @@ class AviationRAGApp:
                     )
             
             # Потом файлы
-            allowed_exts = {'.pdf', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'}
+            CODE_EXTS = ['.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', '.json', '.xml', '.ini', '.cfg']
+            allowed_exts = ['.pdf', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'] + CODE_EXTS
             files_found = 0
             
             for item in items:
@@ -878,6 +1004,10 @@ class AviationRAGApp:
         def cancel(e):
             self.page.close(browser_dlg)
         
+        # Получаем размеры окна приложения
+        win_w = self.page.window.width or 1200
+        win_h = self.page.window.height or 800
+        
         browser_dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("Выбор файла", size=18, weight=ft.FontWeight.BOLD),
@@ -890,9 +1020,10 @@ class AviationRAGApp:
                     ft.Text("Клик по папке — войти. Клик по файлу — выбрать.",
                             size=11, color=self.theme["text_secondary"]),
                     ft.Divider(height=1),
-                    ft.Container(content=list_column, height=400),
-                ], spacing=8),
-                width=520,
+                    ft.Container(content=list_column, expand=True),  # expand вместо height=400
+                ], spacing=8, expand=True),  # expand для внешней колонки
+                width=min(900, int(win_w * 0.8)),    # 80% ширины окна (макс 900px)
+                height=min(650, int(win_h * 0.75)),  # 75% высоты окна (макс 650px)
             ),
             actions=[
                 ft.TextButton("Отмена", on_click=cancel),

@@ -13,6 +13,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import settings
+from model_registry import get_model_registry
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -44,30 +45,22 @@ class SimpleFileStore:
 
 # МЕНЕДЖЕР ВЕКТОРНОЙ БАЗЫ
 class VectorStoreManager:
-    def __init__(self): 
-        logging.info(f"Загрузка модели эмбеддингов: {settings.embedder_model_name}")
+    def __init__(self, chat_id: str = "default"):
+        self.chat_id = chat_id
+        self.vector_store = None
+        self.documents = []
         
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=settings.embedder_model_name,
-            model_kwargs={
-                'device': settings.embedder_device,
-                'local_files_only': True
-            },
-            encode_kwargs={'normalize_embeddings': True},
-        )
+        # Получаем кэшированные эмбеддеры
+        self.embeddings = get_model_registry().get_embeddings()
         
-        # Сплиттер для РОДИТЕЛЕЙ
+        # Parent-child сплиттеры (они легкие, можно создавать каждый раз)
         self.parent_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000, 
-            chunk_overlap=200,
-            separators=["\n\n", "\n", ". ", " ", ""]
+            chunk_size=2000,
+            chunk_overlap=200
         )
-        
-        # Сплиттер для ДЕТЕЙ
         self.child_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=400, 
-            chunk_overlap=50,
-            separators=["\n\n", "\n", ". ", " ", ""]
+            chunk_size=400,
+            chunk_overlap=50
         )
         
         # Инициализация нашего надежного хранилища (ВСЕГДА SimpleFileStore, никаких dict!)

@@ -9,6 +9,7 @@ from typing import List
 import numpy as np
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document as LangChainDocument
+from model_registry import get_model_registry
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -16,30 +17,15 @@ class HybridRetriever:
     """
     Класс для выполнения гибридного поиска с последующим реранкингом.
     """
-    
     def __init__(self, vector_store_manager: VectorStoreManager):
         self.vector_store_manager = vector_store_manager
         self.vector_store = vector_store_manager.vector_store
-        
         self.documents = []
         self.bm25 = None
         self._build_bm25_index()
         
-        self.reranker = None
-        try:
-            logging.info("Попытка загрузки модели реранкера: BAAI/bge-reranker-v2-m3...")
-            from sentence_transformers import CrossEncoder
-            
-            # local_files_only=True запрещает любые запросы в интернет
-            self.reranker = CrossEncoder(
-                'BAAI/bge-reranker-v2-m3', 
-                max_length=512, 
-                local_files_only=True 
-            )
-            logging.info("Модель реранкера успешно загружена (оффлайн-режим).")
-        except Exception as e:
-            logging.warning(f"Не удалось загрузить реранкер: {e}")
-            logging.info("Будет использоваться только гибридный поиск (BM25 + Vector + RRF).")
+        # Кэшированный cross-encoder из реестра
+        self.reranker = get_model_registry().get_cross_encoder()
             
     def _build_bm25_index(self):
         """Построение BM25 индекса с защитой от лимита SQLite в ChromaDB"""
