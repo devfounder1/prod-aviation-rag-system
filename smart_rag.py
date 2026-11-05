@@ -13,6 +13,9 @@ from hybrid_retriever import HybridRetriever
 from langchain_core.callbacks import BaseCallbackHandler
 from ai_agent import CodeAgent
 from model_registry import get_model_registry
+from logging_config import get_logger
+logger = get_logger(__name__)
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -28,7 +31,7 @@ class TokenCollector(BaseCallbackHandler):
 
 class SmartRAG:
     def __init__(self, model_name: str = "qwen2.5:14b", chat_id: str = "default"):
-        print(f"[SmartRAG] Инициализация с моделью: {model_name}", flush=True)
+        logger.info(f"[SmartRAG] Инициализация завершена успешно")
         self.model_name = model_name
         self.chat_id = chat_id
         
@@ -36,7 +39,7 @@ class SmartRAG:
             # ... твой существующий код инициализации ...
             print(f"[SmartRAG] Инициализация завершена успешно", flush=True)
         except Exception as e:
-            print(f"[SmartRAG] Ошибка инициализации: {e}", flush=True)
+            logger.error(f"[SmartRAG] Ошибка инициализации: {e}", exc_info=True)
             raise
         
         # Инициализация векторной базы (Parent-Child) — передаем chat_id
@@ -260,7 +263,7 @@ class SmartRAG:
             'алгоритм', 'плата', 'модуль', 'диагностика', 'юстировка'
         ]
         if any(kw in question_lower for kw in tech_keywords):
-            print(f"[ROUTER] Ключевые слова → SEARCH", flush=True)
+            logger.info(f"[ROUTER] Ключевые слова → SEARCH")
             return "SEARCH"
         
         # 🆕 3. Проверка на вопросы "что/как/почему"
@@ -275,7 +278,7 @@ class SmartRAG:
             return "USERDOC"
         
         # 5. Только если ничего не нашли — спрашиваем LLM
-        print(f"[ROUTER] Отправляю в LLM: '{question}'", flush=True)
+        logger.info(f"[ROUTER] Отправляю в LLM: '{question}'")
         
         router_prompt = ChatPromptTemplate.from_messages([
             ("system", f"""Ты — BUTUZIK.AI, диспетчер технической поддержки.
@@ -294,7 +297,7 @@ class SmartRAG:
         chain = router_prompt | self.llm
         response = chain.invoke({"question": question}).content.strip().upper()
         
-        print(f"[ROUTER] LLM ответила: '{response}'", flush=True)
+        logger.info(f"[ROUTER] LLM ответила: '{response}'")
         
         for intent in ("USERDOC", "SEARCH", "CHAT"):
             if intent in response:
@@ -347,14 +350,12 @@ class SmartRAG:
             print(f"[SmartRAG] Документы не найдены", flush=True)
             return ""
         except Exception as e:
-            import traceback
-            print(f"[SmartRAG] Ошибка поиска пользовательских документов:", flush=True)
-            traceback.print_exc() # <-- Это покажет точную строку и текст ошибки
+            logger.error(f"[SmartRAG] Ошибка поиска пользовательских документов:", exc_info=True)
             return ""
 
     def query(self, question: str, chat_id=None) -> str:
         """Главный метод пайплайна: Self-RAG + приоритет пользовательских документов."""
-        print(f"\nВопрос: '{question}'", flush=True)
+        logger.info(f"\nВопрос: '{question}'")
         user_ctx = self._get_user_context(question, chat_id)
         
         # 0. Приоритетный контекст из загруженных пользователем документов
@@ -494,7 +495,7 @@ class SmartRAG:
         
         # 2. СНАЧАЛА определяем интент (ОДИН раз для всего метода!)
         intent = self.route(question, chat_history)
-        print(f"[STREAM] Интент: {intent}", flush=True)
+        logger.info(f"[STREAM] Интент: {intent}")
         
         # 3. 🆕 ОБРАБОТКА ИЗОБРАЖЕНИЙ (теперь intent уже известен и можно его использовать)
         image_paths = []
@@ -632,7 +633,7 @@ class SmartRAG:
             docs = self.retriever.search(search_query, k=5)
             
             # ДЕТАЛЬНАЯ ОТЛАДКА: что вернул retriever
-            print(f"[STREAM] Retriever вернул {len(docs)} документов", flush=True)
+            logger.info(f"[STREAM] Retriever вернул {len(docs)} документов")
             for i, doc in enumerate(docs):
                 fname = doc.metadata.get('filename', '???')
                 clen = len(doc.page_content) if doc.page_content else 0

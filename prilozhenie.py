@@ -1,4 +1,3 @@
-import flet as ft
 import json
 import threading
 from pathlib import Path
@@ -6,6 +5,11 @@ import sys
 import platform
 import re
 import subprocess
+from logging_config import setup_logging
+setup_logging(level="INFO", log_file="logs/app.log")
+import flet as ft
+from logging_config import get_logger
+logger = get_logger(__name__)
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
@@ -47,7 +51,7 @@ DEFAULT_MODEL_DISPLAY = "Qwen 2.5 (14B)"
 
 def load_assets():
     assets = {}
-    print(f"[ASSETS] Path: {ASSETS_DIR}", flush=True)
+    logger.info(f"[ASSETS] Path: {ASSETS_DIR}")
     
     logo_path = ASSETS_DIR / "logo.png"
     if logo_path.exists():
@@ -165,9 +169,9 @@ class AviationRAGApp:
         try:
             from agent_tools import set_approval_callback
             set_approval_callback(self._show_code_approval_dialog)
-            print("[APP] Callback подтверждения кода установлен", flush=True)
+            logger.info("[APP] Callback подтверждения кода установлен")
         except Exception as e:
-            print(f"[APP] Не удалось установить callback: {e}", flush=True)
+            logger.error(f"[APP] Не удалось установить callback: {e}", exc_info=True)
         
         self.is_processing = False
         
@@ -247,7 +251,7 @@ class AviationRAGApp:
             else:
                 return ""
         except Exception as e:
-            print(f"[ERROR] Ошибка извлечения текста из {file_path}: {e}", flush=True)
+            logger.error(f"Ошибка извлечения текста из {file_path}: {e}", exc_info=True)
             return ""
     
     def _setup_page(self):
@@ -660,7 +664,7 @@ class AviationRAGApp:
 
     def _handle_attach_click(self, e):
         """Прикрепление файла к текущему сообщению"""
-        print("[DEBUG] Клик на кнопку +", flush=True)
+        logger.debug(f"Клик на кнопку +")
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
@@ -785,7 +789,7 @@ class AviationRAGApp:
             
         except Exception as e:
             import traceback
-            print(f"[ERROR] {e}\n{traceback.format_exc()}")
+            logger.error(f"Критическая ошибка: {e}", exc_info=True)
             self.page.run_thread(self._finalize_streaming_message, f"Ошибка: {e}", [], getattr(self, '_streaming_chat_id', None))
 
     def _cleanup_cancelled_stream(self):
@@ -1459,7 +1463,7 @@ class AviationRAGApp:
             text = transcribe(audio)
             self.page.run_thread(self._voice_apply_text, text)
         except Exception as ex:
-            print(f"[VOICE] Ошибка записи: {ex}", flush=True)
+            logger.error(f"[VOICE] Ошибка записи: {ex}", exc_info=True)
             self._voice_recording = False
             self.page.run_thread(self._set_mic_state, "idle")
             self.page.run_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
@@ -1591,7 +1595,7 @@ class AviationRAGApp:
                 self.page.run_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
         except Exception as e:
             import traceback
-            print(f"[ERROR] {e}\n{traceback.format_exc()}")
+            logger.error(f"Критическая ошибка: {e}", exc_info=True)
             self.page.run_thread(self._on_document_ready, {"error": str(e)})
 
     def _on_document_ready(self, info):

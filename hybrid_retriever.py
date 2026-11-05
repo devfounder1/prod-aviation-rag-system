@@ -10,6 +10,8 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document as LangChainDocument
 from model_registry import get_model_registry
+from logging_config import get_logger
+logger = get_logger(__name__)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -75,7 +77,7 @@ class HybridRetriever:
             self.bm25 = None
         
     def search(self, query: str, k: int = 5) -> List[LangChainDocument]:
-        print(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}", flush=True)
+        logger.info(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}")
         
         # ЖЕСТКАЯ ЗАЩИТА: k и candidate_k никогда не могут быть 0 или отрицательными
         k = max(1, int(k))
@@ -103,14 +105,14 @@ class HybridRetriever:
         
         # Векторный поиск
         vector_results = self.vector_store_manager.search(query, k=candidate_k)
-        print(f"[RETRIEVER] vector_search вернул {len(vector_results)} документов", flush=True)
+        logger.info(f"[RETRIEVER] vector_search вернул {len(vector_results)} документов")
         
         # BM25 поиск
         tokenized_query = query.split()
         bm25_scores = self.bm25.get_scores(tokenized_query)
         top_bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_k]
         bm25_results = [self.documents[i] for i in top_bm25_indices]
-        print(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов", flush=True)
+        logger.info(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов")
         
         # RRF fusion
         fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
@@ -150,7 +152,7 @@ class HybridRetriever:
         return fused_docs
     
     def _rerank(self, query: str, documents: List[LangChainDocument], top_k: int) -> List[LangChainDocument]:
-        print(f"[RETRIEVER._rerank] Вход: {len(documents)} документов, top_k={top_k}", flush=True)
+        logger.info(f"[RETRIEVER._rerank] Вход: {len(documents)} документов, top_k={top_k}")
         
         if not documents:
             print(f"[RETRIEVER._rerank] Пустой вход, возвращаем []", flush=True)

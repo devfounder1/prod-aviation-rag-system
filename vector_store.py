@@ -14,7 +14,8 @@ from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import settings
 from model_registry import get_model_registry
-
+from logging_config import get_logger
+logger = get_logger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
 
@@ -117,7 +118,7 @@ class VectorStoreManager:
             progress = batch_end
             percent = (progress / total_parents) * 100
             logging.info(f"  Прогресс: {progress}/{total_parents} ({percent:.1f}%) - создано {len(child_docs)} детей")
-            print(f"  Прогресс: {progress}/{total_parents} ({percent:.1f}%) - создано {len(child_docs)} детей", flush=True)
+            logger.info(f"  Прогресс: {progress}/{total_parents} ({percent:.1f}%) - создано {len(child_docs)} детей")
         
         logging.info(f"Создано {len(child_docs)} детей")
         logging.info("Сохраняю в ChromaDB...")
@@ -131,7 +132,7 @@ class VectorStoreManager:
         )
         
         logging.info(f"Векторная база и хранилище родителей созданы в: {persist_path.absolute()}")
-        print(f"Векторная база создана в: {persist_path.absolute()}", flush=True)
+        logger.info(f"Векторная база создана в: {persist_path.absolute()}")
         return self.vector_store
     
     def load(self) -> Chroma:
@@ -179,7 +180,7 @@ class VectorStoreManager:
         logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
 
         child_results = self.vector_store.similarity_search(query, k=k * 3)
-        logging.info(f"DEBUG: Найдено детей в Chroma: {len(child_results)}")
+        logger.debug(f"Найдено детей в Chroma: {len(child_results)}")
 
         unique_parents = []
         seen_parent_ids = set()
