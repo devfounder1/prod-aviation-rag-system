@@ -2,10 +2,14 @@
 model_registry.py
 Singleton-реестр для кэширования тяжелых моделей и компонентов.
 Избегает повторной загрузки эмбеддеров, BM25, реранкера.
+
+ВАЖНО: Все модели загружаются ТОЛЬКО из локального кэша (local_files_only=True).
+Никаких скачиваний из интернета в рантайме!
 """
 import logging
 from typing import Optional, Dict, Any
-from functools import lru_cache
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +33,7 @@ class ModelRegistry:
             
         self._embeddings = None
         self._cross_encoder = None
-        self._bm25_instances: Dict[str, Any] = {}  # chat_id -> BM25
+        self._bm25_instances: Dict[str, Any] = {}
         
         self._initialized = True
         logger.info("ModelRegistry инициализирован")
@@ -40,31 +44,42 @@ class ModelRegistry:
         return cls()
     
     def get_embeddings(self):
-        """Получить кэшированные эмбеддеры."""
+        """Получить кэшированные эмбеддеры. ТОЛЬКО локальная загрузка."""
         if self._embeddings is None:
-            logger.info("Загрузка эмбеддеров...")
+            logger.info(f"Загрузка эмбеддеров: {settings.embedder_model_name} (device={settings.embedder_device})")
             from langchain_huggingface import HuggingFaceEmbeddings
             
             self._embeddings = HuggingFaceEmbeddings(
-                model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
+                model_name=settings.embedder_model_name,
+                model_kwargs={
+                    'device': settings.embedder_device,
+                    'local_files_only': True,  # ← КРИТИЧНО: запрет скачивания из интернета
+                },
+                encode_kwargs={'normalize_embeddings': True},
             )
-            logger.info("Эмбеддеры загружены")
+            logger.info("Эмбеддеры загружены из локального кэша")
         
         return self._embeddings
     
     def get_cross_encoder(self):
-        """Получить кэшированный cross-encoder."""
+        """Получить кэшированный cross-encoder. ТОЛЬКО локальная загрузка."""
         if self._cross_encoder is None:
-            logger.info("Загрузка cross-encoder...")
-            from sentence_transformers import CrossEncoder
-            
-            self._cross_encoder = CrossEncoder(
-                'cross-encoder/ms-marco-MiniLM-L-6-v2',
-                max_length=512
-            )
-            logger.info("Cross-encoder загружен")
+            # Имя модели захардкожено (как в оригинальном hybrid_retriever.py)
+            reranker_name = 'BAAI/bge-reranker-v2-m3'
+            logger.info(f"Загрузка cross-encoder: {reranker_name}")
+            try:
+                from sentence_transformers import CrossEncoder
+                
+                self._cross_encoder = CrossEncoder(
+                    reranker_name,
+                    max_length=512,
+                    local_files_only=True,
+                )
+                logger.info("Cross-encoder загружен из локального кэша")
+            except Exception as e:
+                logger.warning(f"Не удалось загрузить реранкер: {e}")
+                logger.info("Будет использоваться только гибридный поиск (BM25 + Vector + RRF).")
+                self._cross_encoder = None
         
         return self._cross_encoder
     
@@ -99,7 +114,6 @@ class ModelRegistry:
         }
 
 
-# Глобальная функция для удобства
 def get_model_registry() -> ModelRegistry:
     """Получить глобальный реестр моделей."""
     return ModelRegistry.get_instance()

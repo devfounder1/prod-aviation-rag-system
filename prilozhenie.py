@@ -668,15 +668,24 @@ class AviationRAGApp:
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
-    def _process(self, user_input: str, attachments=None, agent_mode: bool = False):
+    def _process(
+        self,
+        user_input: str,
+        attachments: list = None,
+        agent_mode: bool = False
+    ):
+        """
+        Обработка сообщения пользователя.
+        
+        Args:
+            user_input: Текст сообщения
+            attachments: Список вложений [{'path': str, 'name': str}]
+            agent_mode: Использовать ли агента
+        """
         code_files_note = []
         try:
             if self.rag_system is None:
-                # Передаем chat_id в SmartRAG
-                self.rag_system = SmartRAG(
-                    model_name=self.current_model_ollama,
-                    chat_id=self.chat_manager.current_chat_id or "default"
-                )
+                self.rag_system = SmartRAG(model_name=self.current_model_ollama)
             
             original_chat_id = self.chat_manager.current_chat_id
             self._streaming_chat_id = original_chat_id
@@ -696,11 +705,13 @@ class AviationRAGApp:
             if attachments:
                 print(f"[DEBUG] Обрабатываю {len(attachments)} прикреплённых файлов", flush=True)
                 for att in attachments:
-                    # КОД-ФАЙЛЫ: отдаём агенту, не тащим в текстовый контекст
+                    # ВСЕ ТЕКСТОВЫЕ И КОДОВЫЕ ФАЙЛЫ: копируем в attached/ для чтения агентом
                     ext = Path(att['path']).suffix.lower()
-                    CODE_EXTS = ['.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', '.json', '.xml', '.ini', '.cfg']
-                    
-                    if ext in CODE_EXTS:
+                    ATTACHABLE_EXTS = [
+                        '.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', 
+                        '.json', '.xml', '.ini', '.cfg', '.docx', '.pdf', '.txt', '.md'
+                    ]
+                    if ext in ATTACHABLE_EXTS:
                         from agent_tools import register_attached_file, AGENT_WORKSPACE
                         attached_dir = AGENT_WORKSPACE / "attached"
                         attached_dir.mkdir(exist_ok=True)
@@ -708,8 +719,8 @@ class AviationRAGApp:
                         (attached_dir / fname).write_bytes(Path(att['path']).read_bytes())
                         register_attached_file(fname, att['path'])
                         code_files_note.append(f"- {fname} (копия: attached/{fname})")
-                        print(f"[DEBUG] Код-файл зарегистрирован для агента: {fname}", flush=True)
-                        continue  # ← пропускаем обычное извлечение текста
+                        print(f"[DEBUG] Файл зарегистрирован для агента: {fname}", flush=True)
+                        continue  # ← агент сам прочитает его через read_file
                     
                     # Обычные файлы (PDF/DOCX/TXT) — как раньше
                     text = self._extract_text_from_file(att['path'])
@@ -733,9 +744,10 @@ class AviationRAGApp:
             
             if agent_mode and code_files_note:
                 user_input = (
-                    "ПРИКРЕПЛЁННЫЕ КОД-ФАЙЛЫ (читай через read_file('attached/...'), "
-                    "правь через update_attached_file):\n" + "\n".join(code_files_note) +
-                    f"\n\nЗАДАЧА ПОЛЬЗОВАТЕЛЯ: {user_input}"
+                    "ПРИКРЕПЛЁННЫЕ ФАЙЛЫ (читай через read_file('attached/ИМЯ_ФАЙЛА'), "
+                    "для кода правь через update_attached_file, для документов создавай новые через write_file):\n" 
+                    + "\n".join(code_files_note) +
+                    f"\nЗАДАЧА ПОЛЬЗОВАТЕЛЯ: {user_input}"
                 )
             
             response_data = self.rag_system.query_stream(
@@ -788,9 +800,13 @@ class AviationRAGApp:
             self.page.run_thread(self._finalize_streaming_message, clean, real_sources, original_chat_id)
             
         except Exception as e:
-            import traceback
-            logger.error(f"Критическая ошибка: {e}", exc_info=True)
-            self.page.run_thread(self._finalize_streaming_message, f"Ошибка: {e}", [], getattr(self, '_streaming_chat_id', None))
+            logger.error(f"Ошибка обработки: {e}", exc_info=True)
+            self.page.run_thread(
+                self._finalize_streaming_message,
+                f"Ошибка: {e}",
+                [],
+                getattr(self, '_streaming_chat_id', None)
+            )
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""

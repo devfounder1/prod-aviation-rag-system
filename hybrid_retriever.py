@@ -12,6 +12,7 @@ from langchain_core.documents import Document as LangChainDocument
 from model_registry import get_model_registry
 from logging_config import get_logger
 logger = get_logger(__name__)
+from exceptions import RetrieverError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -75,59 +76,78 @@ class HybridRetriever:
         except Exception as e:
             logging.error(f"Ошибка при построении BM25 индекса: {e}")
             self.bm25 = None
-        
+
     def search(self, query: str, k: int = 5) -> List[LangChainDocument]:
+        """
+        Гибридный поиск с реранкингом.
+        
+        Args:
+            query: Поисковый запрос
+            k: Количество финальных результатов
+        
+        Returns:
+            Список отранжированных документов
+        
+        Raises:
+            RetrieverError: Если поиск не удался
+        """
         logger.info(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}")
         
-        # ЖЕСТКАЯ ЗАЩИТА: k и candidate_k никогда не могут быть 0 или отрицательными
         k = max(1, int(k))
         candidate_k = max(1, int(k * 3))
         
         if self.vector_store is None:
-            raise RuntimeError("Векторная база данных не инициализирована")
+            raise RetrieverError("Векторная база данных не инициализирована")
+        
+        logger.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        
+        try:
+            # Если BM25 не построен, fallback на чистый векторный поиск
+            if self.bm25 is None:
+                logging.info("BM25 индекс отсутствует, используем только векторный поиск.")
+                return self.vector_store_manager.search(query, k=k)
             
-        logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+            # ИСПРАВЛЕНО: candidate_k не должен зависеть от self.documents
+            # Используем фиксированный лимит или размер BM25 индекса
+            if hasattr(self.bm25, 'doc_len'):
+                max_docs = len(self.bm25.doc_len)
+            else:
+                max_docs = len(self.documents)
+            
+            candidate_k = min(candidate_k, max_docs, 15)
+            logger.info(f"candidate_k={candidate_k}, max_docs={max_docs}")
+            
+            # Векторный поиск
+            vector_results = self.vector_store_manager.search(query, k=candidate_k)
+            logger.info(f"[RETRIEVER] vector_search вернул {len(vector_results)} документов")
+            
+            # BM25 поиск
+            tokenized_query = query.split()
+            bm25_scores = self.bm25.get_scores(tokenized_query)
+            top_bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_k]
+            bm25_results = [self.documents[i] for i in top_bm25_indices]
+            logger.info(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов")
+            
+            # RRF fusion
+            fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
+            logger.info(f"После RRF fusion: {len(fused_results)} документов")
+            
+            # Реранкинг
+            final_results = self._rerank(query, fused_results, top_k=k)
+            logger.info(f"После _rerank: {len(final_results)} документов")
+            
+
+            for i, doc in enumerate(final_results):
+                fname = doc.metadata.get('filename', '???')
+                logger.info(f"Финальный документ [{i}]: filename='{fname}'")
+                        
+            return final_results
         
-        # Если BM25 не построен, fallback на чистый векторный поиск
-        if self.bm25 is None:
-            logging.info("BM25 индекс отсутствует, используем только векторный поиск.")
-            return self.vector_store_manager.search(query, k=k)
-        
-        # 🆕 ИСПРАВЛЕНО: candidate_k не должен зависеть от self.documents
-        # Используем фиксированный лимит или размер BM25 индекса
-        if hasattr(self.bm25, 'doc_len'):
-            max_docs = len(self.bm25.doc_len)
-        else:
-            max_docs = len(self.documents)
-        
-        candidate_k = min(candidate_k, max_docs, 15)
-        print(f"[RETRIEVER] candidate_k={candidate_k}, max_docs={max_docs}", flush=True)
-        
-        # Векторный поиск
-        vector_results = self.vector_store_manager.search(query, k=candidate_k)
-        logger.info(f"[RETRIEVER] vector_search вернул {len(vector_results)} документов")
-        
-        # BM25 поиск
-        tokenized_query = query.split()
-        bm25_scores = self.bm25.get_scores(tokenized_query)
-        top_bm25_indices = np.argsort(bm25_scores)[::-1][:candidate_k]
-        bm25_results = [self.documents[i] for i in top_bm25_indices]
-        logger.info(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов")
-        
-        # RRF fusion
-        fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
-        print(f"[RETRIEVER] После RRF fusion: {len(fused_results)} документов", flush=True)
-        
-        # Реранкинг
-        final_results = self._rerank(query, fused_results, top_k=k)
-        print(f"[RETRIEVER] После _rerank: {len(final_results)} документов", flush=True)
-        
-        # Финальная отладка
-        for i, doc in enumerate(final_results):
-            fname = doc.metadata.get('filename', '???')
-            print(f"[RETRIEVER] Финальный документ [{i}]: filename='{fname}'", flush=True)
-        
-        return final_results
+        except RetrieverError:
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка гибридного поиска: {e}", exc_info=True)
+            raise RetrieverError(f"Не удалось выполнить поиск: {e}") from e
     
     def _reciprocal_rank_fusion(self, vector_results: List[LangChainDocument], bm25_results: List[LangChainDocument], k: int) -> List[LangChainDocument]:
         rrf_scores = {}
@@ -152,44 +172,42 @@ class HybridRetriever:
         return fused_docs
     
     def _rerank(self, query: str, documents: List[LangChainDocument], top_k: int) -> List[LangChainDocument]:
-        logger.info(f"[RETRIEVER._rerank] Вход: {len(documents)} документов, top_k={top_k}")
+        """
+        Реранкинг документов через Cross-Encoder.
+        
+        Args:
+            query: Поисковый запрос
+            documents: Список документов для ранжирования
+            top_k: Количество лучших документов для возврата
+        
+        Returns:
+            Отсортированный список документов
+        """
+        logger.info(f"Вход: {len(documents)} документов, top_k={top_k}")
         
         if not documents:
-            print(f"[RETRIEVER._rerank] Пустой вход, возвращаем []", flush=True)
+            logger.warning("Пустой вход, возвращаем []")
             return []
         
-        # ФИЛЬТРАЦИЯ файлов-оглавлений
-        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents', '0__содержание']
-        filtered_docs = []
-        for doc in documents:
-            filename = doc.metadata.get('filename', '').lower()
-            if any(pattern in filename for pattern in skip_patterns):
-                print(f"[RETRIEVER._rerank] Исключен файл-оглавление: {filename}", flush=True)
-                continue
-            filtered_docs.append(doc)
-        
-        print(f"[RETRIEVER._rerank] После фильтрации оглавлений: {len(filtered_docs)} документов", flush=True)
-        
-        if not filtered_docs:
-            print(f"[RETRIEVER._rerank] Все документы отфильтрованы, возвращаем оригинальный список", flush=True)
-            filtered_docs = documents
+        # Фильтрация отключена — оглавления теперь индексируются
+        filtered_docs = documents
         
         if self.reranker is None:
-            print(f"[RETRIEVER._rerank] Реранкер отсутствует, возвращаем топ {top_k}", flush=True)
+            logger.warning("Реранкер отсутствует, возвращаем топ документов без ранжирования")
             return filtered_docs[:top_k]
         
-        # Реранкинг
+        # Реранкинг через Cross-Encoder
         pairs = [(query, doc.page_content) for doc in filtered_docs]
         scores = self.reranker.predict(pairs)
-        print(f"[RETRIEVER._rerank] Получено {len(scores)} оценок от реранкера", flush=True)
+        logger.info(f"Получено {len(scores)} оценок от реранкера")
         
         scored_docs = list(zip(filtered_docs, scores))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         
         final = [doc for doc, score in scored_docs[:top_k]]
-        print(f"[RETRIEVER._rerank] Возвращаем {len(final)} документов", flush=True)
+        logger.info(f"Возвращаем {len(final)} документов")
         
-        return final    
+        return final 
 
 if __name__ == "__main__":
     print("=" * 60)

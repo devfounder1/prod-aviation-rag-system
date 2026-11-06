@@ -65,7 +65,7 @@ class SmartRAG:
 
         # Инициализация AI Агента для выполнения кода
         try:
-            self.code_agent = CodeAgent(llm=self.llm, max_iterations=8)  # Явно указываем 8
+            self.code_agent = CodeAgent(llm=self.llm, max_iterations=50)  # 30 для цикла тестирования
                         # Подключаем базу знаний ПРЛ-27СМ к агенту
             def _kb_search(query: str) -> str:
                 docs = self.retriever.search(query, k=3)
@@ -241,92 +241,169 @@ class SmartRAG:
         response = self.vision_llm.invoke(messages)
         return response.content
  
-    def route(self, question: str, chat_history: list = None) -> str:
-        """Гибридный роутер: сначала ключевые слова, потом LLM"""
+    def route(self, question: str, chat_history: list = None, attachments: list = None) -> str:
+        """
+        Гибридный роутер: сначала ключевые слова и файлы, потом LLM.
         
+        Args:
+            question: Вопрос пользователя
+            chat_history: История диалога
+            attachments: Список прикреплённых файлов (словари с ключом 'path')
+        
+        Returns:
+            "AGENT", "SEARCH", "USERDOC" или "CHAT"
+        """
         # 1. Формируем контекст истории (если есть)
         history_context = ""
         if chat_history and len(chat_history) > 0:
             last_msgs = chat_history[-4:]
             history_context = "ПРЕДЫДУЩИЙ ДИАЛОГ:\n" + "\n".join([
-                f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:400]}" 
+                f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:400]}"
                 for m in last_msgs
             ]) + "\n"
         
         question_lower = question.lower()
-        
-        # 🆕 2. ЖЁСТКАЯ ПРОВЕРКА КЛЮЧЕВЫХ СЛОВ (быстро и надёжно)
-        # Если есть технические термины — сразу SEARCH
-        tech_keywords = [
-            'pps', 'ппс', 'сигнал', 'мку', 'уми', 'прд', 'пои', 'прл',
-            '276гг', '276цц', 'шкаф', 'протокол', 'излучение', 'синхронизатор',
-            'алгоритм', 'плата', 'модуль', 'диагностика', 'юстировка'
-        ]
-        if any(kw in question_lower for kw in tech_keywords):
-            logger.info(f"[ROUTER] Ключевые слова → SEARCH")
-            return "SEARCH"
-        
-        # 🆕 3. Проверка на вопросы "что/как/почему"
-        if any(q in question_lower for q in ['что такое', 'как ', 'как-', 'почему', 'для чего', 'расскажи']):
-            print(f"[ROUTER] Вопрос → SEARCH", flush=True)
-            return "SEARCH"
-        
-        # 4. Проверка на USERDOC
-        if any(ext in question_lower for ext in ['.pdf', '.docx', '.txt', '.md']):
-            return "USERDOC"
-        if any(word in question_lower for word in ['мой файл', 'прикреплён', 'загружен', 'резюме']):
-            return "USERDOC"
-        
-        # 5. Только если ничего не нашли — спрашиваем LLM
-        logger.info(f"[ROUTER] Отправляю в LLM: '{question}'")
-        
-        router_prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""Ты — BUTUZIK.AI, диспетчер технической поддержки.
+            
+        try:
+            # 🆕 2. ПРОВЕРКА НА АГЕНТА (Прикреплённые код-файлы + задачи по коду)
+            if attachments:
+                code_extensions = {'.py', '.js', '.ts', '.java', '.cpp', '.c', '.cs', '.go', '.rb', '.php'}
+                has_code_files = any(
+                    Path(att.get('path', '')).suffix.lower() in code_extensions 
+                    for att in attachments
+                )
+                
+                code_task_keywords = [
+                    'исправь', 'напиши', 'добавь', 'удали', 'измени', 'обнови',
+                    'протестируй', 'запусти', 'отладь', 'оптимизируй', 'рефактор',
+                    'ошибк', 'баг', 'тест', 'код', 'функци', 'класс', 'метод'
+                ]
+                
+                if has_code_files and any(kw in question_lower for kw in code_task_keywords):
+                    logger.info(f"[ROUTER] Обнаружены код-файлы + задача по коду → AGENT")
+                    return "AGENT"
+            
+            # 3. ЖЁСТКАЯ ПРОВЕРКА КЛЮЧЕВЫХ СЛОВ (быстро и надёжно)
+            tech_keywords = [
+                'pps', 'ппс', 'сигнал', 'мку', 'уми', 'прд', 'пои', 'прл',
+                '276гг', '276цц', 'шкаф', 'протокол', 'излучение', 'синхронизатор',
+                'алгоритм', 'плата', 'модуль', 'диагностика', 'юстировка'
+            ]
+            if any(kw in question_lower for kw in tech_keywords):
+                logger.info(f"[ROUTER] Ключевые слова → SEARCH")
+                return "SEARCH"
+            
+            # 4. Проверка на вопросы "что/как/почему"
+            if any(q in question_lower for q in ['что такое', 'как ', 'как-', 'почему', 'для чего', 'расскажи']):
+                print(f"[ROUTER] Вопрос → SEARCH", flush=True)
+                return "SEARCH"
+            
+            # 5. Проверка на USERDOC (исключаем .py, так как он уже ушёл в AGENT)
+            if any(ext in question_lower for ext in ['.pdf', '.docx', '.txt', '.md']):
+                return "USERDOC"
+            if any(word in question_lower for word in ['мой файл', 'прикреплён', 'загружен', 'резюме']):
+                return "USERDOC"
+            
+            # 6. Только если ничего не нашли — спрашиваем LLM
+            logger.info(f"[ROUTER] Отправляю в LLM: '{question}'")
+            
+            router_prompt = ChatPromptTemplate.from_messages([
+                ("system", f"""Ты — BUTUZIK.AI, диспетчер технической поддержки.
 
-{history_context}
-
-ПРАВИЛА:
-1. **USERDOC** — если вопрос про прикреплённый файл или документ
-2. **SEARCH** — если вопрос про оборудование, инструкции, параметры
-3. **CHAT** — приветствия, благодарности, общие вопросы
-
-Отвечай ТОЛЬКО одним словом: USERDOC, SEARCH или CHAT"""),
-            ("human", "{question}")
-        ])
-        
-        chain = router_prompt | self.llm
-        response = chain.invoke({"question": question}).content.strip().upper()
-        
-        logger.info(f"[ROUTER] LLM ответила: '{response}'")
-        
-        for intent in ("USERDOC", "SEARCH", "CHAT"):
-            if intent in response:
-                return intent
-        return "CHAT"
-
-    def rewrite_query(self, question: str) -> str:
-        """Переформулирует человеческий вопрос в строгий технический поисковый запрос."""
-        rewrite_prompt = ChatPromptTemplate.from_messages([
-            ("system", """Ты — BUTUZIK.AI - Технический эксперт по авиационному оборудованию ПРЛ-27СМ.
-    Твоя задача — переформулировать вопрос пользователя в строгий технический поисковый запрос для системы RAG.
+    {history_context}
 
     ПРАВИЛА:
-    1. Добавь технические синонимы и аббревиатуры (МКУ, УМИ, Д2ХК511, 276ГГ02, 276ЦЦ02, ПРД, ПРЛ-27СМ).
-    2. Если вопрос про "выключить", добавь также "отключить", "прекратить".
-    3. Если вопрос про "включить", добавь также "активировать", "запустить".
+    1. **AGENT** — если нужно написать, исправить, протестировать или запустить код.
+    2. **USERDOC** — если вопрос про прикреплённый текстовый документ или резюме.
+    3. **SEARCH** — если вопрос про оборудование, инструкции, параметры ПРЛ-27СМ.
+    4. **CHAT** — приветствия, благодарности, общие вопросы.
+
+    Отвечай ТОЛЬКО одним словом: AGENT, USERDOC, SEARCH или CHAT"""),
+                ("human", "{question}")
+            ])
+            
+            chain = router_prompt | self.llm
+            response = chain.invoke({"question": question}).content.strip().upper()
+            
+            logger.info(f"[ROUTER] LLM ответила: '{response}'")
+            
+            for intent in ("AGENT", "USERDOC", "SEARCH", "CHAT"):
+                if intent in response:
+                    return intent
+            return "CHAT"
+            
+        except Exception as e:
+            logger.error(f"Ошибка роутинга: {e}", exc_info=True)
+            # Fallback: если роутер сломался — идём в SEARCH (безопаснее)
+            return "SEARCH"
+
+    def rewrite_query(self, question: str) -> str:
+        """
+        Переформулирует человеческий вопрос в технический поисковый запрос.
+        
+        ВАЖНО: Для общих вопросов (про структуру, содержание, разделы) НЕ добавляет
+        лишние технические термины — иначе поиск уйдёт в сторону.
+        """
+        question_lower = question.lower()
+        
+        # Определяем тип вопроса: общий или конкретный
+        general_patterns = [
+            'содержание', 'структура', 'разделы', 'оглавление', 
+            'какие документы', 'список документов', 'описание документации',
+            'что входит в', 'из чего состоит'
+        ]
+        is_general_question = any(pattern in question_lower for pattern in general_patterns)
+        
+        if is_general_question:
+            # Для общих вопросов — минимальное переформулирование
+            rewrite_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Ты — BUTUZIK.AI, эксперт по технической документации ПРЛ-27СМ.
+
+    ЗАДАЧА: Переформулировать ОБЩИЙ вопрос о структуре документации для поиска.
+
+    ПРАВИЛА:
+    1. НЕ добавляй конкретные технические термины (МКУ, УМИ, 276ГГ02 и т.д.) — вопрос про структуру в целом.
+    2. Добавь синонимы: "содержание" → "оглавление", "разделы документации", "структура документов".
+    3. Сохрани суть вопроса, но сделай его более формальным.
+    4. НЕ отвечай на вопрос! Только перепиши его.
+
+    Примеры:
+    - "расскажи про содержание документации" → "содержание технической документации ПРЛ-27СМ, оглавление, структура разделов, список документов"
+    - "какие есть разделы в документации?" → "разделы технической документации, структура, оглавление, перечень документов"
+
+    Вопрос пользователя: {question}
+    Переформулированный запрос:"""),
+                ("human", "{question}")
+            ])
+        else:
+            # Для конкретных вопросов — полное переформулирование с терминами
+            rewrite_prompt = ChatPromptTemplate.from_messages([
+                ("system", """Ты — BUTUZIK.AI, технический эксперт по авиационному оборудованию ПРЛ-27СМ.
+
+    ЗАДАЧА: Переформулировать КОНКРЕТНЫЙ технический вопрос для точного поиска.
+
+    ПРАВИЛА:
+    1. Добавь технические синонимы и аббревиатуры (МКУ, УМИ, Д2ХК511, 276ГГ02, ПРД, ПРЛ-27СМ).
+    2. Если вопрос про "выключить" → добавь "отключить", "прекратить".
+    3. Если вопрос про "включить" → добавь "активировать", "запустить".
     4. НЕ отвечай на вопрос! Только перепиши его для поиска.
-    
+
     Примеры:
     - "как выключить излучение?" → "отключение излучения ПРД, команда отключить Д2ХК511, прекращение выдачи СВЧ мощности"
     - "почему не горит лампочка?" → "отсутствие индикации, состояние индикаторов УМИ, причины отсутствия свечения"
 
     Вопрос пользователя: {question}
     Технический поисковый запрос:"""),
-            ("human", "{question}")
-        ])
+                ("human", "{question}")
+            ])
         
         chain = rewrite_prompt | self.llm
         rewritten = chain.invoke({"question": question}).content.strip()
+        
+        # Логируем для диагностики
+        print(f"[REWRITE] Тип вопроса: {'ОБЩИЙ' if is_general_question else 'КОНКРЕТНЫЙ'}", flush=True)
+        print(f"[REWRITE] Результат: '{rewritten}'", flush=True)
+        
         return rewritten
 
     def _get_user_context(self, question: str, chat_id=None) -> str:
@@ -386,10 +463,16 @@ class SmartRAG:
             response = chain.invoke({"context": user_ctx, "question": question})
             return f"[С поиском]:\n{response.content}"
         
-        # SEARCH-ветка с Self-RAG
-        print("Переформулирование запроса для улучшения поиска...", flush=True)
+        # 4. SEARCH mode
+        print("[STREAM] Переформулирование запроса для улучшения поиска...", flush=True)
         search_query = self.rewrite_query(question)
-        print(f"Технический запрос для поиска (Попытка 1): '{search_query}'", flush=True)
+        print(f"[STREAM] Технический запрос: '{search_query}'", flush=True)
+
+        # 🆕 Диагностика: определяем тип запроса для понимания поведения поиска
+        question_lower = question.lower()
+        general_patterns = ['содержание', 'структура', 'разделы', 'оглавление', 'какие документы']
+        is_general = any(pattern in question_lower for pattern in general_patterns)
+        print(f"[STREAM] Тип запроса: {'ОБЩИЙ (про структуру)' if is_general else 'КОНКРЕТНЫЙ (про оборудование)'}", flush=True)
         
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
@@ -462,68 +545,101 @@ class SmartRAG:
                 "в предоставленной документации не найдено точной информации по вашему вопросу. "
                 "Попробуйте переформулировать его или обратитесь к инженеру.")
 
-    def query_stream(self, question: str, chat_history: list = None, chat_id=None, on_token=None, cancel_flag=None, user_context=None, recent_file_context=None, attachments=None, agent_mode: bool = False) -> str:
+    def query_stream(
+        self,
+        question: str,
+        chat_history: list = None,
+        chat_id=None,
+        on_token=None,
+        cancel_flag=None,
+        user_context=None,
+        recent_file_context=None,
+        attachments=None,
+        agent_mode: bool = False
+    ) -> str:
+        """
+        Обработка вопроса с потоковой генерацией ответа.
+        
+        Args:
+            question: Вопрос пользователя
+            chat_history: История чата
+            chat_id: ID текущего чата
+            on_token: Callback для streaming
+            cancel_flag: Флаг отмены {'cancelled': True/False}
+            user_context: Контекст из прикреплённых файлов
+            recent_file_context: Сохранённый контекст файла
+            attachments: Список вложений
+            agent_mode: Использовать ли агента
+        
+        Returns:
+            Кортеж (ответ, список источников)
+        """
         # Очищаем вопрос от лишней пунктуации (голосовой ввод)
         question = question.strip().rstrip('.!?;:').strip()
-        print(f"\n[STREAM] Вопрос: '{question}'", flush=True)
+        logger.info(f"[STREAM] Вопрос: '{question}'")
+        
+        try:
 
-        if agent_mode and self.code_agent:
-            print("[STREAM] 🤖 Активирован режим АГЕНТА", flush=True)
+            if agent_mode and self.code_agent:
+                print("[STREAM] 🤖 Активирован режим АГЕНТА", flush=True)
+                
+                # Живой лог шагов агента прямо в пузыре сообщения
+                steps_log = []
+                def on_step(text):
+                    steps_log.append(text)
+                    if on_token:
+                        on_token("Агент работает...\n\n" + "\n\n---\n\n".join(steps_log))
+                
+                # 🆕 Передаем chat_history агенту, чтобы он помнил контекст!
+                agent_response = self.code_agent.run(question, chat_history=chat_history, on_step=on_step)
+                self.last_sources = ["agent_workspace (Агент сгенерировал файлы)"]
+                
+                process_log = "\n\n---\n\n".join(steps_log) if steps_log else "(шагов не было)"
+                final_text = (
+                    f"**Журнал выполнения:**\n\n{process_log}\n\n"
+                    f"---\n\n**Итог:**\n{agent_response}"
+                )
+                return f"[Режим Агента]:\n{final_text}", self.last_sources
             
-            # Живой лог шагов агента прямо в пузыре сообщения
-            steps_log = []
-            def on_step(text):
-                steps_log.append(text)
-                if on_token:
-                    on_token("Агент работает...\n\n" + "\n\n---\n\n".join(steps_log))
+            # 1. Формируем текстовый контекст истории
+            history_text = ""
+            if chat_history and len(chat_history) > 0:
+                last_msgs = chat_history[-4:]
+                history_text = "\n".join([f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:500]}" for m in last_msgs])
             
-            agent_response = self.code_agent.run(question, on_step=on_step)
-            self.last_sources = ["agent_workspace (Агент сгенерировал файлы)"]
+            intent = self.route(question, chat_history, attachments)
+            logger.info(f"[STREAM] Интент: {intent}")
             
-            process_log = "\n\n---\n\n".join(steps_log) if steps_log else "(шагов не было)"
-            final_text = (
-                f"**Журнал выполнения:**\n\n{process_log}\n\n"
-                f"---\n\n**Итог:**\n{agent_response}"
-            )
-            return f"[Режим Агента]:\n{final_text}", self.last_sources
-        
-        # 1. Формируем текстовый контекст истории
-        history_text = ""
-        if chat_history and len(chat_history) > 0:
-            last_msgs = chat_history[-4:]
-            history_text = "\n".join([f"{'Пользователь' if m['role']=='user' else 'Ассистент'}: {m['content'][:500]}" for m in last_msgs])
-        
-        # 2. СНАЧАЛА определяем интент (ОДИН раз для всего метода!)
-        intent = self.route(question, chat_history)
-        logger.info(f"[STREAM] Интент: {intent}")
-        
-        # 3. 🆕 ОБРАБОТКА ИЗОБРАЖЕНИЙ (теперь intent уже известен и можно его использовать)
-        image_paths = []
-        if attachments:
-            image_paths = [
-                att['path'] for att in attachments 
-                if att['path'].lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
-            ]
+            # 3. ОБРАБОТКА ИЗОБРАЖЕНИЙ (теперь intent уже известен и можно его использовать)
+            image_paths = []
+            if attachments:
+                image_paths = [
+                    att['path'] for att in attachments 
+                    if att['path'].lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))
+                ]
 
-        if image_paths:
-            print(f"[STREAM] Vision-запрос: {len(image_paths)} изображений", flush=True)
-            
-            # Vision-модель описывает схему
-            vision_answer = self._query_vision(question, image_paths)
-            image_names = [Path(p).name for p in image_paths]
-            self.last_sources = image_names
-            
-            # Опционально: дополняем ответ поиском по RAG, если вопрос технический
-            if intent == "SEARCH":
-                search_query = self.rewrite_query(question)
-                docs = self.retriever.search(search_query, k=3)
-                if docs:
-                    rag_context = "\n".join([d.page_content for d in docs[:2]])
-                    vision_answer += f"\n\n---\n\n📚 **Дополнительно из документации ПРЛ-27СМ:**\n{rag_context}"
-                    rag_sources = list(set(d.metadata.get('filename', '') for d in docs if d.metadata.get('filename')))
-                    self.last_sources = image_names + rag_sources
-            
-            return vision_answer, self.last_sources
+            if image_paths:
+                print(f"[STREAM] Vision-запрос: {len(image_paths)} изображений", flush=True)
+                
+                # Vision-модель описывает схему
+                vision_answer = self._query_vision(question, image_paths)
+                image_names = [Path(p).name for p in image_paths]
+                self.last_sources = image_names
+                
+                # Опционально: дополняем ответ поиском по RAG, если вопрос технический
+                if intent == "SEARCH":
+                    search_query = self.rewrite_query(question)
+                    docs = self.retriever.search(search_query, k=3)
+                    if docs:
+                        rag_context = "\n".join([d.page_content for d in docs[:2]])
+                        vision_answer += f"\n\n---\n\n📚 **Дополнительно из документации ПРЛ-27СМ:**\n{rag_context}"
+                        rag_sources = list(set(d.metadata.get('filename', '') for d in docs if d.metadata.get('filename')))
+                        self.last_sources = image_names + rag_sources
+                
+                return vision_answer, self.last_sources
+        except Exception as e:
+            logger.error(f"Критическая ошибка в query_stream: {e}", exc_info=True)
+            return f"Ошибка обработки вопроса: {e}", []
         
         # 4. Вспомогательная функция для стриминга
         def _generate_stream(chain, context, question, hist_text):

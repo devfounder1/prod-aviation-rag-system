@@ -10,7 +10,12 @@ import pdfplumber
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document as LangChainDocument
 from config import settings
+from logging_config import get_logger
+from exceptions import FileProcessingError
 
+logger = get_logger(__name__)
+
+# Оставляем logging.basicConfig для совместимости с legacy-кодом
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
 class DocumentIngestor:
@@ -125,21 +130,15 @@ class DocumentIngestor:
         supported_text = {'.txt', '.docx', '.pdf'}
         langchain_docs = []
         
-        # Список паттернов для файлов, которые НЕ нужно индексировать
-        skip_patterns = ['содержание', 'contents', 'оглавление', 'table_of_contents']
-        
         for file_path in self.documents_path.rglob('*'):
             # Проверяем, что это файл и его расширение нам подходит
             if file_path.is_file() and file_path.suffix.lower() in supported_text:
                 
                 if file_path.name.startswith('~$'):
+                    logger.debug(f"Пропускаем временный файл: {file_path.name}")
                     continue
                 
-                # ПРОПУСКАЕМ ФАЙЛЫ-ОГЛАВЛЕНИЯ
-                file_name_lower = file_path.name.lower()
-                if any(pattern in file_name_lower for pattern in skip_patterns):
-                    logging.info(f"Пропущен файл-оглавление: {file_path.name}")
-                    continue
+                # Фильтрация оглавлений отключена — они нужны для общих вопросов
                 
                 try: 
                     if file_path.suffix.lower() == '.txt':
@@ -148,6 +147,10 @@ class DocumentIngestor:
                         text = self.load_docx(file_path)
                     else : 
                         text = self.load_pdf(file_path)
+                    
+                    if not text or not text.strip():
+                        logger.warning(f"Файл пустой или не содержит текста: {file_path.name}")
+                        continue
                     
                     # Разбиваем текст на чанки
                     chunks = self.splitter.split_text(text)
@@ -159,16 +162,16 @@ class DocumentIngestor:
                         
                         langchain_docs.append(LangChainDocument(
                             page_content=chunk,
-                            metadata ={
+                            metadata={
                                 "source": str(file_path.absolute()),
                                 "filename": file_path.name,
-                                "chunk_index" : i,
+                                "chunk_index": i,
                                 "chunk_total": len(chunks)
                             }
                         ))
-                
-                except Exception as e: 
-                    logging.error(f"Ошибка обработки файла {file_path.name}: {e}")
+
+                except Exception as e:
+                    logger.error(f"Ошибка обработки файла {file_path.name}: {e}", exc_info=True)
         
         logging.info(f"Успешно обработано и разбито на {len(langchain_docs)} чанков.")
         return langchain_docs

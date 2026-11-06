@@ -17,7 +17,7 @@ from model_registry import get_model_registry
 from logging_config import get_logger
 logger = get_logger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
-
+from exceptions import VectorStoreError
 
 # НАДЕЖНОЕ ХРАНИЛИЩЕ ДЛЯ РОДИТЕЛЕЙ (без зависимостей от langchain.storage)
 class SimpleFileStore:
@@ -160,54 +160,64 @@ class VectorStoreManager:
         return self.vector_store
     
     def search(self, query: str, k: int = None) -> List[LangChainDocument]:
+        """
+        Поиск по векторной базе с Parent-Child логикой.
+        
+        Args:
+            query: Поисковый запрос
+            k: Количество результатов (по умолчанию из settings)
+        
+        Returns:
+            Список документов-родителей
+        
+        Raises:
+            VectorStoreError: Если база не инициализирована или поиск не удался
+        """
         if self.vector_store is None:
-            raise RuntimeError("Векторная база данных не инициализирована")
+            raise VectorStoreError("Векторная база данных не инициализирована")
         
         if k is None:
             k = settings.search_top_k
-            
-        # ЖЕСТКАЯ ЗАЩИТА: гарантируем, что k >= 1
+        
         k = max(1, int(k))
+        logger.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
         
-        logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
-        
-        if self.vector_store is None:
-            raise RuntimeError("Векторная база данных не инициализирована")
-        
-        if k is None:
-            k = settings.search_top_k
-            
-        logging.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        try:
+            child_results = self.vector_store.similarity_search(query, k=k * 3)
+            logger.debug(f"Найдено детей в Chroma: {len(child_results)}")
 
-        child_results = self.vector_store.similarity_search(query, k=k * 3)
-        logger.debug(f"Найдено детей в Chroma: {len(child_results)}")
-
-        unique_parents = []
-        seen_parent_ids = set()
-        
-        for child in child_results:
-            parent_id = child.metadata.get("parent_id")
-            logging.info(f"DEBUG: Проверяем ребенка, parent_id = {parent_id}")
+            unique_parents = []
+            seen_parent_ids = set()
             
-            if parent_id and parent_id not in seen_parent_ids:
-                seen_parent_ids.add(parent_id)
+            for child in child_results:
+                parent_id = child.metadata.get("parent_id")
+                logger.debug(f"Проверяем ребенка, parent_id = {parent_id}")
                 
-                parent_text_list = self.docstore.mget([parent_id])
-                parent_text = parent_text_list[0] if parent_text_list else ""
-                
-                logging.info(f"DEBUG: Текст родителя получен: {bool(parent_text)} (длина: {len(parent_text) if parent_text else 0})")
-                
-                if parent_text:
-                    unique_parents.append(LangChainDocument(
-                        page_content=parent_text,
-                        metadata={"filename": child.metadata.get("filename", "Unknown")}
-                    ))
+                if parent_id and parent_id not in seen_parent_ids:
+                    seen_parent_ids.add(parent_id)
                     
-                if len(unique_parents) >= k:
-                    break
+                    parent_text_list = self.docstore.mget([parent_id])
+                    parent_text = parent_text_list[0] if parent_text_list else ""
                     
-        logging.info(f"Найдено уникальных документов (родителей): {len(unique_parents)}")
-        return unique_parents
+                    logging.info(f"DEBUG: Текст родителя получен: {bool(parent_text)} (длина: {len(parent_text) if parent_text else 0})")
+                    
+                    if parent_text:
+                        unique_parents.append(LangChainDocument(
+                            page_content=parent_text,
+                            metadata={"filename": child.metadata.get("filename", "Unknown")}
+                        ))
+                        
+                    if len(unique_parents) >= k:
+                        break
+                        
+            logger.info(f"Найдено уникальных документов (родителей): {len(unique_parents)}")
+            return unique_parents
+        
+        except VectorStoreError:
+            raise  # Пробрасываем наши ошибки как есть
+        except Exception as e:
+            logger.error(f"Ошибка поиска в векторной базе: {e}", exc_info=True)
+            raise VectorStoreError(f"Не удалось выполнить поиск: {e}") from e
 
 if __name__ == "__main__":
     print("=" * 60)
