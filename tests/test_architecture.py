@@ -21,7 +21,8 @@ def test_reject_non_ollama_endpoint(url: str) -> None:
 def test_routes(intent: str) -> None:
     rag = SmartRAG()
     rag.llm = MagicMock()
-    rag.llm.invoke.return_value = AIMessage(content=intent)
+    rag.llm.bind.return_value = rag.llm
+    rag.llm.invoke.return_value = AIMessage(content='{"intent":"' + intent + '"}')
     assert rag.route("question") == intent
 
 
