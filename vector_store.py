@@ -186,7 +186,7 @@ class VectorStoreManager:
             k = settings.search_top_k
         
         k = max(1, int(k))
-        logger.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        logger.info("Parent retrieval k=%s", k)
         
         try:
             child_results = self.vector_store.similarity_search(query, k=k * 3)

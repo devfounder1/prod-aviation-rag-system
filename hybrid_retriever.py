@@ -91,7 +91,7 @@ class HybridRetriever:
         Raises:
             RetrieverError: Если поиск не удался
         """
-        logger.info(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}")
+        logger.info("Retrieval started k=%s", k)
         
         k = max(1, int(k))
         candidate_k = max(1, int(k * 3))
@@ -99,7 +99,7 @@ class HybridRetriever:
         if self.vector_store is None:
             raise RetrieverError("Векторная база данных не инициализирована")
         
-        logger.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        logger.info("Parent retrieval k=%s", k)
         
         try:
             # Если BM25 не построен, fallback на чистый векторный поиск
@@ -153,7 +153,7 @@ class HybridRetriever:
 
             for i, doc in enumerate(final_results):
                 fname = doc.metadata.get('filename', '???')
-                logger.info(f"Финальный документ [{i}]: filename='{fname}'")
+                logger.debug("Final document rank=%s", i)
                         
             return final_results
         

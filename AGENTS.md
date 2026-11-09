@@ -21,7 +21,7 @@
 2. **Local Isolation:** No cloud model requests. Route all LLM calls strictly to `http://127.0.0.1:11434/v1`; disable environment proxies, redirects, and cloud tracing. Models must already be available locally; do not download them during runtime.
 3. **Type Hints:** Use strict type annotations for new function signatures.
 4. **Data Preservation:** Never delete or overwrite original documents or legacy Chroma databases as part of a backend change. Migration reads snapshots, verifies copied records, and retains originals. A knowledge-index rebuild must preserve the attachments collection and create a backup first.
-5. **Agent Tools:** Restrict file access to the agent workspace. Editing an attached original requires explicit GUI approval. Do not expose arbitrary host Python execution without a separately designed isolation mechanism.
+5. **Agent Tools:** Restrict universal-agent file access to a per-chat workspace in `agent_workspace/chats/`; capture attachment permissions and approval callbacks per request. Do not reintroduce global callbacks or registries into SmartRAG. Editing an attached original requires explicit GUI approval. Do not expose arbitrary host Python execution without a separately designed isolation mechanism.
 
 ## Verification & Commands
 - Install locked dependencies: `uv sync`
@@ -31,3 +31,9 @@
 - Run CLI: `uv run python main.py`
 - Check/import storage: `uv run python storage.py` (stop any old app instance before the first migration).
 - Start Ollama if not already running: `ollama serve`; inspect installed models with `ollama list`. Do not pull models automatically.
+
+## Release checks
+- Run `uv run python doctor.py` for read-only local readiness checks.
+- Run `uv run python evaluate_rag.py` for deterministic retrieval CI and add `--live` only for local-model quality checks. Fixtures must be synthetic or explicitly cleared for publication.
+- Keep runtime data out of Git; never use `git add .` without reviewing the staged paths.
+- Keep the staged progress and validation evidence in `PRODUCTION_PROGRESS.md`.
