@@ -23,7 +23,7 @@ class HybridRetriever:
     def __init__(self, vector_store_manager: VectorStoreManager):
         self.vector_store_manager = vector_store_manager
         self.vector_store = vector_store_manager.vector_store
-        self.documents = []
+        self.documents: list[LangChainDocument] = []
         self.bm25 = None
         self._build_bm25_index()
         
@@ -63,7 +63,7 @@ class HybridRetriever:
             
             # 🆕 СОХРАНЯЕМ документы в self.documents с метаданными
             self.documents = [
-                LangChainDocument(page_content=text, metadata=metadata)
+                LangChainDocument(page_content=text, metadata=metadata or {})
                 for text, metadata in zip(texts, metadatas)
             ]
             
@@ -91,7 +91,7 @@ class HybridRetriever:
         Raises:
             RetrieverError: Если поиск не удался
         """
-        logger.info(f"[RETRIEVER] search() вызван с query='{query[:50]}...', k={k}")
+        logger.info("Retrieval started k=%s", k)
         
         k = max(1, int(k))
         candidate_k = max(1, int(k * 3))
@@ -99,7 +99,7 @@ class HybridRetriever:
         if self.vector_store is None:
             raise RetrieverError("Векторная база данных не инициализирована")
         
-        logger.info(f"Поиск по запросу: '{query}' (топ-{k} родителей)")
+        logger.info("Parent retrieval k=%s", k)
         
         try:
             # Если BM25 не построен, fallback на чистый векторный поиск
@@ -128,6 +128,20 @@ class HybridRetriever:
             bm25_results = [self.documents[i] for i in top_bm25_indices]
             logger.info(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов")
             
+            # Bring lexical children to the same parent level as vector results.
+            parents = []
+            seen = set()
+            for doc in bm25_results:
+                parent_id = doc.metadata.get("parent_id")
+                if parent_id and parent_id not in seen:
+                    text = self.vector_store_manager.docstore.mget([parent_id])[0]
+                    if text:
+                        parents.append(LangChainDocument(page_content=text, metadata=doc.metadata))
+                        seen.add(parent_id)
+                elif not parent_id:
+                    parents.append(doc)
+            bm25_results = parents
+
             # RRF fusion
             fused_results = self._reciprocal_rank_fusion(vector_results, bm25_results, k=candidate_k)
             logger.info(f"После RRF fusion: {len(fused_results)} документов")
@@ -139,7 +153,7 @@ class HybridRetriever:
 
             for i, doc in enumerate(final_results):
                 fname = doc.metadata.get('filename', '???')
-                logger.info(f"Финальный документ [{i}]: filename='{fname}'")
+                logger.debug("Final document rank=%s", i)
                         
             return final_results
         
@@ -150,27 +164,22 @@ class HybridRetriever:
             raise RetrieverError(f"Не удалось выполнить поиск: {e}") from e
     
     def _reciprocal_rank_fusion(self, vector_results: List[LangChainDocument], bm25_results: List[LangChainDocument], k: int) -> List[LangChainDocument]:
-        rrf_scores = {}
-        
-        for rank, doc in enumerate(vector_results):
-            doc_id = id(doc)
-            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + 1.0 / (60 + rank + 1)
-        
-        for rank, doc in enumerate(bm25_results):
-            doc_id = id(doc)
-            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + 1.0 / (60 + rank + 1)
-            
-        sorted_items = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-        
-        fused_docs = []
-        for doc_id, _ in sorted_items[:k]:
-            for doc in vector_results + bm25_results:
-                if id(doc) == doc_id:
-                    fused_docs.append(doc)
-                    break
-                    
-        return fused_docs
-    
+        import hashlib
+        scores: dict[str, float] = {}
+        documents: dict[str, LangChainDocument] = {}
+        for results in (vector_results, bm25_results):
+            seen: set[str] = set()
+            for rank, doc in enumerate(results):
+                key = str(doc.metadata.get("parent_id") or hashlib.sha256(
+                    (str(doc.metadata.get("filename", "")) + "\0" + doc.page_content).encode()
+                ).hexdigest())
+                if key in seen:
+                    continue
+                seen.add(key)
+                scores[key] = scores.get(key, 0.0) + 1.0 / (61 + rank)
+                documents[key] = doc
+        return [documents[key] for key in sorted(scores, key=lambda key: scores[key], reverse=True)[:k]]
+
     def _rerank(self, query: str, documents: List[LangChainDocument], top_k: int) -> List[LangChainDocument]:
         """
         Реранкинг документов через Cross-Encoder.

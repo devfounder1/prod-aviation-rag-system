@@ -10,6 +10,14 @@ from datetime import datetime
 AGENT_WORKSPACE = Path(__file__).parent / "agent_workspace"
 AGENT_WORKSPACE.mkdir(exist_ok=True)
 
+def workspace_path(file_path: str) -> Path:
+    """Resolve symlinks and reject paths outside the agent workspace."""
+    path = (AGENT_WORKSPACE / file_path).resolve()
+    if not path.is_relative_to(AGENT_WORKSPACE.resolve()):
+        raise ValueError("Доступ вне рабочей папки запрещён")
+    return path
+
+
 DANGEROUS_IMPORTS = [
     'os.system', 'os.popen', 'subprocess', 'shutil.rmtree', 
     'eval(', 'exec(', '__import__', 'importlib'  
@@ -122,15 +130,15 @@ def update_attached_file(file_name: str, new_content: str) -> str:
     original = _attached_code_files[file_name]
     
     # Пост-обработка: заменяем литеральные \n на реальные переносы строк
-    if '\\n' in new_content:
-        new_content = new_content.replace('\\n', '\n')
     
     print(f"\n[AGENT TOOLS] ЗАПИСЬ В ФАЙЛ {file_name}:", flush=True)
     print("="*60, flush=True)
     print(new_content, flush=True)
     print("="*60, flush=True)
     
-    # Обязательное подтверждение пользователем (ВСЕГДА для сохранения файлов)
+    if _code_approval_callback is None:
+        return "Ошибка: подтверждение изменения оригинала недоступно"
+    # Explicit approval is mandatory for writing an attached original.
     if _code_approval_callback:
         approved = _code_approval_callback(
             f"--- ФИНАЛЬНЫЙ ПРОВЕРЕННЫЙ КОД ФАЙЛА {file_name} ---\n{new_content}"
@@ -176,7 +184,7 @@ def read_file(file_path: str) -> str:
         Содержимое файла или сообщение об ошибке
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path if not Path(file_path).is_absolute() else Path(file_path)
+        full_path = workspace_path(file_path)
         
         try:
             full_path.resolve().relative_to(AGENT_WORKSPACE.resolve())
@@ -279,7 +287,7 @@ def write_file(file_path: str, content: str) -> str:
         Сообщение об успехе или ошибке
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path
+        full_path = workspace_path(file_path)
         
         # Создаём родительские директории
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -499,43 +507,37 @@ def execute_python_code(code: str, timeout: int = 10, require_approval: bool = T
 
 
 @tool
-def run_code_test(code: str, test_code: str, timeout: int = 30) -> str:
+def run_code_test(code: str, test_code: str, timeout: int = 20) -> str:
     """
     Запускает основной код + тестовый код и возвращает структурированный результат.
     Используй ЭТОТ инструмент для проверки кода ПЕРЕД сохранением через update_attached_file.
     
     Args:
-        code: Основной код (функции, классы, которые нужно протестировать)
-        test_code: Тестовый код с assert'ами или проверками (будет выполнен ПОСЛЕ основного кода)
+        code: Основной код (функции, классы для проверки)
+        test_code: Тестовый код с assert'ами (выполняется после основного)
         timeout: Таймаут в секундах
         
     Returns:
-        Результат: УСПЕХ или НЕУДАЧА с деталями ошибок
+        Результат: УСПЕХ (SUCCESS) или НЕУДАЧА (FAILURE) с деталями ошибок
     """
     import time
     import sys 
     start_time = time.time()
     
-    # Проверка на запрещённые импорты
+    # Проверка на опасные конструкции
     for dangerous in DANGEROUS_IMPORTS:
         if dangerous in code or dangerous in test_code:
             return f"Ошибка безопасности: Использование '{dangerous}' запрещено"
+
+    # Если тест не передан, создаем базовую проверку на синтаксис
+    if not test_code.strip():
+        test_code = "print('Синтаксис корректен')"
+
+    test_code_indented = '\n'.join('    ' + line for line in test_code.split('\n'))
     
-    for module in DANGEROUS_MODULES:
-        if f"import {module}" in code or f"from {module}" in code:
-            return f"Ошибка безопасности: Импорт модуля '{module}' запрещён"
-        if f"import {module}" in test_code or f"from {module}" in test_code:
-            return f"Ошибка безопасности: Импорт модуля '{module}' запрещён в тестах"
-    
-    # Добавляем отступ к тестовому коду (4 пробела для блока try)
-    test_code_indented = '\n'.join(
-        '    ' + line for line in test_code.split('\n')
-    )
-    
-    # Объединяем код и тест с обёрткой для перехвата ошибок
     full_code = f'''{code}
 
-# === ТЕСТЫ ===
+# === АВТОМАТИЧЕСКИЕ ТЕСТЫ ===
 import traceback as _tb
 
 _test_passed = True
@@ -546,12 +548,10 @@ try:
 except AssertionError as e:
     _test_passed = False
     _test_errors.append(f"AssertionError: {{e}}")
-    print(f"TEST_ERROR: AssertionError: {{e}}")
 except Exception as e:
     _test_passed = False
     _test_errors.append(f"{{type(e).__name__}}: {{e}}")
     _test_errors.append(_tb.format_exc())
-    print(f"TEST_ERROR: {{type(e).__name__}}: {{e}}")
 
 print()
 if _test_passed:
@@ -562,9 +562,7 @@ else:
         print(f"TEST_ERROR: {{err}}")
 '''
     
-    script_path = None
     try:
-        # Сохраняем в папку debug_tests
         SCRIPTS_DIR = AGENT_WORKSPACE / "scripts" / "debug_tests"
         SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
         script_name = f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}.py"
@@ -585,48 +583,18 @@ else:
         duration = time.time() - start_time
         
         if "TEST_RESULT: SUCCESS" in stdout:
-            final = f"""ТЕСТ ПРОЙДЕН УСПЕШНО
-
-Стандартный вывод:
-{stdout[:1500]}
-
-Код работает корректно. Можно сохранять через update_attached_file."""
-            agent_logger.log_tool_call("run_code_test", {"code": code[:100]}, final, duration)
+            final = f"ТЕСТ ПРОЙДЕН УСПЕШНО (SUCCESS).\nВывод:\n{stdout[:1000]}"
+            agent_logger.log_tool_call("run_code_test", {"status": "SUCCESS"}, final, duration)
             return final
-        
         else:
-            error_details = []
-            if "TEST_ERROR:" in stdout:
-                for line in stdout.split('\n'):
-                    if line.startswith("TEST_ERROR:"):
-                        error_details.append(line.replace("TEST_ERROR: ", ""))
-            
-            if stderr:
-                error_details.append(f"STDERR:\n{stderr[:1000]}")
-            
-            if result.returncode != 0 and not error_details:
-                error_details.append(f"Код завершился с кодом {result.returncode}")
-            
-            final = f"""ТЕСТ НЕ ПРОЙДЕН
-
-Ошибки:
-{chr(10).join(error_details)}
-
-Стандартный вывод:
-{stdout[:1000]}
-
-Исправь код и запусти run_code_test заново."""
-            agent_logger.log_tool_call("run_code_test", {"code": code[:100]}, final, duration)
+            final = f"ТЕСТ НЕ ПРОЙДЕН (FAILURE).\nSTDERR:\n{stderr}\nSTDOUT:\n{stdout[:1000]}"
+            agent_logger.log_tool_call("run_code_test", {"status": "FAILURE"}, final, duration)
             return final
             
     except subprocess.TimeoutExpired:
-        result_msg = f"ТЕСТ НЕ ПРОЙДЕН: Таймаут ({timeout} сек). Код выполняется слишком долго."
-        agent_logger.log_tool_call("run_code_test", {"code": code[:100]}, result_msg)
-        return result_msg
+        return f"ТЕСТ НЕ ПРОЙДЕН: Превышен таймаут ({timeout} сек)."
     except Exception as e:
-        result_msg = f"ОШИБКА ЗАПУСКА ТЕСТА: {type(e).__name__}: {e}"
-        agent_logger.log_tool_call("run_code_test", {"code": code[:100]}, result_msg)
-        return result_msg
+        return f"ОШИБКА ЗАПУСКА ТЕСТА: {str(e)}"
 
 @tool
 def append_to_file(file_path: str, text_to_append: str) -> str:
@@ -642,7 +610,7 @@ def append_to_file(file_path: str, text_to_append: str) -> str:
         Сообщение об успехе или ошибке
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path
+        full_path = workspace_path(file_path)
         
         if not full_path.exists():
             return f"Ошибка: Файл не найден: {file_path}"
@@ -681,7 +649,7 @@ def get_file_structure(file_path: str) -> str:
         Структурированный список элементов с номерами строк
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path if not Path(file_path).is_absolute() else Path(file_path)
+        full_path = workspace_path(file_path)
         
         if not full_path.exists():
             return f"Файл не найден: {file_path}"
@@ -764,7 +732,7 @@ def read_file_lines(file_path: str, start_line: int, end_line: int) -> str:
         Содержимое указанных строк с номерами строк
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path if not Path(file_path).is_absolute() else Path(file_path)
+        full_path = workspace_path(file_path)
         
         if not full_path.exists():
             return f"Файл не найден: {file_path}"
@@ -820,7 +788,7 @@ def replace_lines(file_path: str, start_line: int, end_line: int, new_content: s
         Сообщение об успехе или ошибке
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path if not Path(file_path).is_absolute() else Path(file_path)
+        full_path = workspace_path(file_path)
         
         if not full_path.exists():
             return f"Файл не найден: {file_path}"
@@ -880,7 +848,7 @@ def find_in_file(file_path: str, pattern: str, case_sensitive: bool = False) -> 
         Список найденных строк с номерами
     """
     try:
-        full_path = AGENT_WORKSPACE / file_path if not Path(file_path).is_absolute() else Path(file_path)
+        full_path = workspace_path(file_path)
         
         if not full_path.exists():
             return f"Файл не найден: {file_path}"

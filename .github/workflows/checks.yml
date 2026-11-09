@@ -1,0 +1,19 @@
+name: Offline application checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - name: Strict types for newly hardened modules
+        run: uv run mypy --strict --follow-imports=silent chat_store.py routing.py jobs.py file_tools.py doctor.py logging_config.py
+      - name: Syntax-check desktop integration
+        run: uv run python -m py_compile prilozhenie.py smart_rag.py ai_agent.py

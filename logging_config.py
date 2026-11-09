@@ -1,51 +1,25 @@
-"""
-logging_config.py
-Единая настройка логирования для всего проекта.
-"""
+"""Bounded local logs. Record operational metadata, never document contents."""
 import logging
-import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import sys
 
-logging.getLogger("httpx2").setLevel(logging.WARNING)
 
-def setup_logging(level: str = "INFO", log_file: str = "logs/app.log"):
-    """Настройка структурированного логирования."""
-    log_format = "%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s"
-    date_format = "%Y-%m-%d %H:%M:%S"
-    
-    log_path = Path(log_file)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format=log_format,
-        datefmt=date_format,
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file, encoding='utf-8'),
-        ]
-    )
-    
-    # УМЕНЬШАЕМ ШУМ от сторонних библиотек
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
-    logging.getLogger("chromadb").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    
-    # ОТКЛЮЧАЕМ спам от faster_whisper (wake-word listener)
-    logging.getLogger("faster_whisper").setLevel(logging.WARNING)
-    
-    # УБИРАЕМ шум от torch
-    logging.getLogger("torch").setLevel(logging.WARNING)
-    logging.getLogger("torch.distributed").setLevel(logging.ERROR)
-    
-    logging.info("=" * 60)
-    logging.info("Логирование инициализировано")
-    logging.info(f"Уровень: {level}, Файл: {log_file}")
-    logging.info("=" * 60)
+def rotating_handler(path: Path, max_bytes: int = 2_000_000,
+                     backup_count: int = 3) -> RotatingFileHandler:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return RotatingFileHandler(path, maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8')
+
+
+def setup_logging(level: str = 'INFO', log_file: str = 'logs/app.log') -> None:
+    handler = rotating_handler(Path(log_file))
+    logging.basicConfig(level=getattr(logging, level.upper()),
+                        format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+                        handlers=[logging.StreamHandler(sys.stdout), handler], force=True)
+    for name in ('httpx', 'httpx2', 'httpcore', 'urllib3', 'chromadb', 'sentence_transformers',
+                 'faster_whisper', 'torch'):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Получить логгер для конкретного модуля."""
     return logging.getLogger(name)

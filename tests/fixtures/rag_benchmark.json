@@ -1,0 +1,15 @@
+{
+  "description": "Entirely fictional test equipment; contains no user documents or operating instructions.",
+  "documents": [
+    {"filename": "fixture_power.txt", "text": "Учебный вымышленный блок TEST-A. Напряжение питания TEST-A составляет 24 В. Масса и габариты в этом документе не указаны."},
+    {"filename": "fixture_timer.txt", "text": "Учебный вымышленный таймер TEST-B. Задержка TEST-B составляет 7 секунд. Его индикатор готовности имеет синий цвет."},
+    {"filename": "fixture_service.txt", "text": "Учебный вымышленный датчик TEST-C. Период обслуживания TEST-C составляет 30 дней. Тип батареи не указан."}
+  ],
+  "cases": [
+    {"id": "power", "question": "Какое напряжение питания TEST-A? Укажи имя документа.", "expected_source": "fixture_power.txt", "facts": ["24"], "abstain": false},
+    {"id": "timer", "question": "Какова задержка TEST-B? Укажи имя документа.", "expected_source": "fixture_timer.txt", "facts": ["7"], "abstain": false},
+    {"id": "service", "question": "Каков период обслуживания TEST-C? Укажи имя документа.", "expected_source": "fixture_service.txt", "facts": ["30"], "abstain": false},
+    {"id": "unknown_weight", "question": "Какова масса TEST-A в килограммах?", "expected_source": null, "facts": [], "abstain": true},
+    {"id": "unknown_battery", "question": "Какой тип батареи у TEST-C?", "expected_source": null, "facts": [], "abstain": true}
+  ]
+}

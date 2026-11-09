@@ -3,7 +3,18 @@
 Использует pydantic-settings для автоматической загрузки переменных из .env файла.
 """
 
+import os
 from pathlib import Path
+
+# Offline runtime policy applies even if the shell has tracing enabled.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
+from urllib.parse import urlsplit
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,13 +29,15 @@ class Settings(BaseSettings):
     # ПУТИ К ФАЙЛАМ
     # ==========================================
     documents_dir: str = "./documents_ae"
-    chroma_persist_dir: str = str(Path(__file__).parent / "chroma_db_prl27")
+    chroma_persist_dir: str = str(Path(__file__).parent / "data" / "chroma")
+    legacy_chroma_dir: str = str(Path(__file__).parent / "chroma_db_prl27")
+    knowledge_collection: str = "knowledge_base"
     knowledge_base_path: str = "" 
     # ==========================================
     # НАСТРОЙКИ LLM (ЯЗЫКОВАЯ МОДЕЛЬ)
     # ==========================================
     llm_model_name: str = "qwen2.5:14b"
-    llm_base_url: str = "http://localhost:11434/v1"
+    llm_base_url: str = "http://127.0.0.1:11434/v1"
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2048
@@ -51,19 +64,30 @@ class Settings(BaseSettings):
     # ==========================================
     # НАСТРОЙКИ ПОЛЬЗОВАТЕЛЬСКИХ ДОКУМЕНТОВ
     # ==========================================
-    user_docs_collection: str = "user_documents"
+    user_docs_collection: str = "attachments"
     user_docs_max_docs: int = 10
     user_docs_top_k: int = 4
     user_docs_chunk_size: int = 800
     user_docs_chunk_overlap: int = 150
     
+    @field_validator("llm_base_url")
+    @classmethod
+    def local_endpoint(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if (parts.scheme != "http" or parts.hostname != "127.0.0.1"
+                or parts.port != 11434 or parts.path.rstrip("/") != "/v1"
+                or parts.username or parts.password or parts.query or parts.fragment):
+            raise ValueError("LLM must use http://127.0.0.1:11434/v1")
+        return value.rstrip("/")
+
     # ==========================================
     # КОНФИГУРАЦИЯ PYDANTIC V2
     # ==========================================
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        validate_assignment=True
     )
     
     

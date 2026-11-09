@@ -111,12 +111,8 @@ class _Embedder:
     @classmethod
     def model(cls):
         if cls._model is None:
-            import torch
-            from sentence_transformers import SentenceTransformer
-            name = settings.embedder_model_name
-            device = settings.embedder_device
-            cls._model = SentenceTransformer(name, device=device, local_files_only=True)
-            print(f"[DOCS] Эмбеддинг-модель {name} на {device}", flush=True)
+            from model_registry import get_model_registry
+            cls._model = get_model_registry().get_embeddings()._client
         return cls._model
 
     @classmethod
@@ -136,10 +132,8 @@ class _Embedder:
 # ==========================================
 class UserDocStore:
     def __init__(self):
-        # ИСПОЛЬЗУЕМ ОТДЕЛЬНУЮ ПАПКУ, ЧТОБЫ НЕ ПУТАТЬ С PRL-27
-        db_path = Path(settings.chroma_persist_dir).parent / "user_docs_chroma"
-        db_path.mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=str(db_path))
+        from storage import get_chroma_client
+        self.client = get_chroma_client()
         self.coll = self.client.get_or_create_collection(
             name=settings.user_docs_collection,
             metadata={"hnsw:space": "cosine"},
@@ -239,6 +233,8 @@ def add_document(path, chat_id="global", category="general", progress=print):
     return {"doc_id": doc_id, "filename": dest.name, "chunks": len(chunks), "category": category}
 
 def retrieve_user_context(query, k=None, chat_id=None):
+    if not chat_id:
+        raise ValueError("chat_id is required for attachment search")
     k = k or settings.user_docs_top_k
     store = UserDocStore()
     if store.count() == 0:
