@@ -15,6 +15,7 @@ from langchain_core.tools import tool, BaseTool
 from ai_agent import LocalAgent
 from config import settings
 from llm_client import create_llm
+from jobs import request_scope
 
 History = list[dict[str, Any]]
 logger = logging.getLogger(__name__)
@@ -92,6 +93,24 @@ class SmartRAG:
                      user_context: str | None = None, recent_file_context: str | None = None,
                      attachments: list[dict[str, str]] | None = None,
                      agent_mode: bool = False) -> tuple[str, list[str]]:
+        with request_scope(cancel_flag) as active:
+            if not active:
+                return "Выполнение отменено.", []
+            try:
+                return self._query_stream(question, chat_history, chat_id, on_token, cancel_flag,
+                                          user_context, recent_file_context, attachments, agent_mode)
+            except Exception:
+                if cancel_flag and cancel_flag.get("cancelled"):
+                    return "Выполнение отменено.", []
+                raise
+
+    def _query_stream(self, question: str, chat_history: History | None = None,
+                     chat_id: str | None = None,
+                     on_token: Callable[[str], None] | None = None,
+                     cancel_flag: dict[str, bool] | None = None,
+                     user_context: str | None = None, recent_file_context: str | None = None,
+                     attachments: list[dict[str, str]] | None = None,
+                     agent_mode: bool = False) -> tuple[str, list[str]]:
         """Synchronous worker API; Flet calls this from its existing background thread."""
         active_chat = chat_id or self.chat_id
         self.last_sources = []
@@ -99,6 +118,8 @@ class SmartRAG:
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
         intent = "AGENT" if agent_mode else self.route(question, chat_history, attachments)
+        if cancel_flag and cancel_flag.get("cancelled"):
+            return "Выполнение отменено.", []
         logger.info("Request route=%s model=%s chat_id=%s", intent, self.model_name, active_chat)
         if intent == "AGENT":
             sources: list[str] = []
@@ -119,6 +140,8 @@ class SmartRAG:
                 sources += re.findall(r'\[Прикреплённый файл:\s*([^\]]+)\]', supplied)
             if not context and not attachments:
                 return "В доступных документах не найдено информации по запросу.", []
+        if cancel_flag and cancel_flag.get("cancelled"):
+            return "Выполнение отменено.", []
         instruction = (
             "Ты — локальный помощник. Отвечай на языке пользователя. "
             + ("Отвечай по источникам, цитируй их имена. Если фактов недостаточно, сообщи об этом. "

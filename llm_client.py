@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 from langchain_core.language_models import LanguageModelInput
 from config import Settings, settings
+from jobs import track_response, track_async_response
 
 
 class OllamaChatOpenAI(ChatOpenAI):
@@ -27,8 +28,8 @@ def create_llm(model: str | None = None) -> ChatOpenAI:
         base_url=settings.llm_base_url, api_key=SecretStr(settings.llm_api_key),
         temperature=settings.llm_temperature, max_completion_tokens=settings.llm_max_tokens,
         timeout=120, max_retries=1, use_responses_api=False,
-        http_client=httpx.Client(trust_env=False, follow_redirects=False),
-        http_async_client=httpx.AsyncClient(trust_env=False, follow_redirects=False),
+        http_client=httpx.Client(trust_env=False, follow_redirects=False, event_hooks={"response": [track_response]}),
+        http_async_client=httpx.AsyncClient(trust_env=False, follow_redirects=False, event_hooks={"response": [track_async_response]}),
     )
 
 

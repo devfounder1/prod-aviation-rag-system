@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
+from jobs import JobController, RequestJob
+from typing import Any, Callable
 
 try:
     from document_processor import add_document, list_documents
@@ -106,6 +108,7 @@ class AviationRAGApp:
         self.current_model_local = AVAILABLE_MODELS[self.current_model_display]
         
         self.chat_manager = ChatManager()
+        self._jobs = JobController()
         self.rag_system = None
         # Устанавливаем callback для подтверждения кода агентом
         try:
@@ -610,143 +613,67 @@ class AviationRAGApp:
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
-    def _process(
-        self,
-        user_input: str,
-        attachments: list = None,
-        agent_mode: bool = False
-    ):
-        """
-        Обработка сообщения пользователя.
-        
-        Args:
-            user_input: Текст сообщения
-            attachments: Список вложений [{'path': str, 'name': str}]
-            agent_mode: Использовать ли агента
-        """
-        code_files_note = []
+    def _queue_job_ui(self, job: RequestJob, action: Callable[..., Any], *args: Any) -> None:
+        def apply() -> None:
+            if self.chat_manager.current_chat_id == job.chat_id:
+                action(*args)
+        self.page.run_thread(self._jobs.apply, job, apply)
+
+    def _complete_job(self, job: RequestJob, response: str, sources: list[str]) -> None:
+        self._finalize_streaming_message(response, sources, job.chat_id)
+        self._jobs.finish(job)
+
+    def _cancel_active_job(self) -> None:
+        self._jobs.cancel()
+        self.is_processing = False
+        self.status_text.value = "● Готов"
+        self.status_text.color = self.theme["status_ready"]
+
+    def _process(self, user_input: str, attachments: list[dict[str, str]],
+                 agent_mode: bool, job: RequestJob, model_name: str,
+                 history: list[dict[str, Any]]) -> None:
         try:
-            if self.rag_system is None:
-                self.rag_system = SmartRAG(model_name=self.current_model_local)
-            
-            original_chat_id = self.chat_manager.current_chat_id
-            self._streaming_chat_id = original_chat_id
-            
-            self._stream_cancel_flag = {"cancelled": False}
-            self._streaming_text = ""
-            
-            self.page.run_thread(self._add_streaming_placeholder)
-            
-            chat = self.chat_manager.get_current_chat()
-            chat_history = chat["messages"][-5:] if chat and chat["messages"] else []
-            
-            # ИЗВЛЕКАЕМ ТЕКСТ ИЗ ПРИКРЕПЛЁННЫХ ФАЙЛОВ И ЗАПОМИНАЕМ ЕГО ДЛЯ ЧАТА
-            user_context = ""
-            recent_file_context = None
-            
-            if attachments:
-                print(f"[DEBUG] Обрабатываю {len(attachments)} прикреплённых файлов", flush=True)
-                for att in attachments:
-                    # ВСЕ ТЕКСТОВЫЕ И КОДОВЫЕ ФАЙЛЫ: копируем в attached/ для чтения агентом
-                    ext = Path(att['path']).suffix.lower()
-                    ATTACHABLE_EXTS = [
-                        '.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', 
-                        '.json', '.xml', '.ini', '.cfg', '.docx', '.pdf', '.txt', '.md'
-                    ]
-                    if ext in ATTACHABLE_EXTS:
-                        from agent_tools import register_attached_file, AGENT_WORKSPACE
-                        attached_dir = AGENT_WORKSPACE / "attached"
-                        attached_dir.mkdir(exist_ok=True)
-                        fname = Path(att['path']).name
-                        (attached_dir / fname).write_bytes(Path(att['path']).read_bytes())
-                        register_attached_file(fname, att['path'])
-                        code_files_note.append(f"- {fname} (копия: attached/{fname})")
-                        print(f"[DEBUG] Файл зарегистрирован для агента: {fname}", flush=True)
-                        continue  # ← агент сам прочитает его через read_file
-                    
-                    # Обычные файлы (PDF/DOCX/TXT) — как раньше
-                    text = self._extract_text_from_file(att['path'])
-                    if text:
-                        user_context += f"\n\n[Прикреплённый файл: {att['name']}]\n{text}\n"
-                        print(f"[DEBUG] Извлечено {len(text)} символов из {att['name']}", flush=True)
-                
-                # Сохраняем контекст файла для уточняющих вопросов в этом чате
-                if user_context:
-                    self._chat_file_contexts[original_chat_id] = user_context
-                    print(f"[DEBUG] Контекст файла сохранён для чата {original_chat_id}", flush=True)
-            else:
-                # Новых файлов нет — берём сохранённый контекст этого чата (для уточнений)
-                recent_file_context = self._chat_file_contexts.get(original_chat_id)
-            
-            def on_token(full_text):
-                if self._stream_cancel_flag.get("cancelled"):
-                    return 
-                self._streaming_text = full_text
-                self.page.run_thread(self._update_streaming_message, full_text)
-            
-            if agent_mode and code_files_note:
-                user_input = (
-                    f"Файл для работы: attached/{Path(attachments[0]['path']).name}. "
-                    f"Задача: {user_input}"
-                )
-            
-            response_data = self.rag_system.query_stream(
-                user_input,
-                chat_history=chat_history,
-                chat_id=original_chat_id,
-                on_token=on_token,
-                cancel_flag=self._stream_cancel_flag,
-                user_context=user_context if user_context else None,
-                recent_file_context=recent_file_context,
-                attachments=attachments,
-                agent_mode=agent_mode,  # Передаём флаг режима агента
-            )
-            
-            # Распаковка кортежа
-            if isinstance(response_data, tuple) and len(response_data) == 2:
-                response, real_sources = response_data
-            else:
-                response = response_data
-                real_sources = []
-            
-            # Fallback на last_sources
-            if not real_sources:
-                real_sources = getattr(self.rag_system, 'last_sources', [])
-            
-            if self._stream_cancel_flag.get("cancelled") or original_chat_id not in self.chat_manager.chats:
-                print(f"[STREAM] Генерация была отменена, очищаем UI", flush=True)
-                self.page.run_thread(self._cleanup_cancelled_stream)
+            if job.token.get("cancelled"):
                 return
-            
-            # Очистка ответа от галлюцинаций модели
-            clean = re.sub(r'\n?\[Источник:[^\]]+\]', '', response).strip()
-            clean = re.sub(r'\n?\*{0,2}Источник:\*{0,2}\s*$', '', clean).strip()
-            clean = clean.replace("[С поиском]:\n", "").replace("[Без поиска]: ", "")
-            
-            # Добавляем имена прикреплённых файлов к источникам
-            if attachments:
-                attachment_names = [att['name'] for att in attachments]
-                real_sources = attachment_names + real_sources
+            rag = self.rag_system
+            if rag is None or rag.model_name != model_name:
+                rag = SmartRAG(model_name=model_name)
+                self._jobs.apply(job, lambda: setattr(self, "rag_system", rag))
+            self._queue_job_ui(job, self._add_streaming_placeholder)
+            user_context = ""
+            file_notes = []
+            for attachment in attachments:
+                path = Path(attachment["path"])
+                if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+                    from agent_tools import AGENT_WORKSPACE, register_attached_file
+                    directory = AGENT_WORKSPACE / "attached"
+                    directory.mkdir(parents=True, exist_ok=True)
+                    (directory / path.name).write_bytes(path.read_bytes())
+                    register_attached_file(path.name, str(path))
+                    file_notes.append("attached/" + path.name)
+                    text = self._extract_text_from_file(str(path))
+                    if text:
+                        user_context += f"\n[Прикреплённый файл: {path.name}]\n{text}\n"
+            if user_context:
+                self._chat_file_contexts[job.chat_id] = user_context
+            if file_notes:
+                user_input += "\nДоступные копии вложений: " + ", ".join(file_notes)
 
-            # Убираем дубликаты источников с сохранением порядка
-            deduped = []
-            for s in real_sources:
-                if s not in deduped:
-                    deduped.append(s)
-            real_sources = deduped
+            def on_token(text: str) -> None:
+                self._queue_job_ui(job, self._update_streaming_message, text)
 
-            print(f"[DEBUG] Финальные источники для UI: {real_sources}", flush=True)
-            
-            self.page.run_thread(self._finalize_streaming_message, clean, real_sources, original_chat_id)
-            
-        except Exception as e:
-            logger.error(f"Ошибка обработки: {e}", exc_info=True)
-            self.page.run_thread(
-                self._finalize_streaming_message,
-                f"Ошибка: {e}",
-                [],
-                getattr(self, '_streaming_chat_id', None)
-            )
+            response, sources = rag.query_stream(
+                user_input, chat_history=history, chat_id=job.chat_id,
+                on_token=on_token, cancel_flag=job.token,
+                user_context=user_context or None,
+                recent_file_context=self._chat_file_contexts.get(job.chat_id),
+                attachments=attachments, agent_mode=agent_mode)
+            if not job.token.get("cancelled"):
+                self._queue_job_ui(job, self._complete_job, job, response, sources)
+        except Exception as exc:
+            logger.error("Request failed: %s", type(exc).__name__)
+            if not job.token.get("cancelled"):
+                self._queue_job_ui(job, self._complete_job, job, f"Ошибка: {exc}", [])
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""
@@ -1161,6 +1088,7 @@ class AviationRAGApp:
         
         #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ УДАЛЕНИИ ЧАТА
         if chat_id == getattr(self, '_streaming_chat_id', None):
+            self._jobs.cancel()
             print(f"[DELETE] Останавливаем генерацию при удалении чата", flush=True)
             if hasattr(self, '_stream_cancel_flag'):
                 self._stream_cancel_flag["cancelled"] = True
@@ -1215,11 +1143,13 @@ class AviationRAGApp:
         self.page.open(dlg)
 
     def _handle_new_chat(self, e):
+        self._cancel_active_job()
         self.chat_manager.create_new_chat()
         self._update_chat_list()
         self._load_current_chat()
 
     def _switch_chat(self, chat_id):
+        self._cancel_active_job()
         #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ЧАТА
         if self.is_processing:
             print(f"[SWITCH] Останавливаем генерацию при переключении чата", flush=True)
@@ -1375,10 +1305,14 @@ class AviationRAGApp:
         self.status_text.color = self.theme["status_busy"]
         self.page.update()
         
-        # Передаём прикреплённые файлы в обработчик
+        chat_id = self.chat_manager.current_chat_id
+        job = self._jobs.start(chat_id)
+        self._stream_cancel_flag = job.token
+        self._streaming_chat_id = chat_id
+        history = (self.chat_manager.get_current_chat() or {}).get("messages", [])[:-1][-8:]
         threading.Thread(
-            target=self._process, 
-            args=(text, pending_attachments, self.agent_mode),  #добавили agent_mode
+            target=self._process,
+            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history),
             daemon=True
         ).start()
 
