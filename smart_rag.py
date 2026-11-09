@@ -62,10 +62,11 @@ class SmartRAG:
             sources.append(name)
         return "\n\n---\n\n".join(parts), list(dict.fromkeys(sources))
 
-    def _agent_tools(self, chat_id: str, sources: list[str]) -> list[BaseTool]:
-        from agent_tools import (read_file, write_file, list_directory, append_to_file,
-                                 get_file_structure, read_file_lines, replace_lines,
-                                 find_in_file, update_attached_file)
+    def _agent_tools(self, chat_id: str, sources: list[str],
+                     attachments: list[dict[str, str]] | None = None,
+                     approve: Callable[[str], bool] | None = None,
+                     cancel_flag: dict[str, bool] | None = None) -> list[BaseTool]:
+        from file_tools import create_file_tools
 
         @tool
         def search_documents(query: str) -> str:
@@ -74,10 +75,7 @@ class SmartRAG:
             sources.extend(name for name in found if name not in sources)
             return context or "В документах ничего не найдено."
 
-        # Arbitrary host Python execution is intentionally not an agent capability.
-        return [search_documents, read_file, write_file, list_directory, append_to_file,
-                get_file_structure, read_file_lines, replace_lines, find_in_file,
-                update_attached_file]
+        return [search_documents, *create_file_tools(chat_id, attachments, approve, cancel_flag)]
 
     def query(self, question: str, chat_id: str | None = None) -> str:
         return self.query_stream(question, chat_id=chat_id)[0]
@@ -92,13 +90,14 @@ class SmartRAG:
                      cancel_flag: dict[str, bool] | None = None,
                      user_context: str | None = None, recent_file_context: str | None = None,
                      attachments: list[dict[str, str]] | None = None,
-                     agent_mode: bool = False) -> tuple[str, list[str]]:
+                     agent_mode: bool = False,
+                     approve: Callable[[str], bool] | None = None) -> tuple[str, list[str]]:
         with request_scope(cancel_flag) as active:
             if not active:
                 return "Выполнение отменено.", []
             try:
                 return self._query_stream(question, chat_history, chat_id, on_token, cancel_flag,
-                                          user_context, recent_file_context, attachments, agent_mode)
+                                          user_context, recent_file_context, attachments, agent_mode, approve)
             except Exception:
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено.", []
@@ -110,7 +109,8 @@ class SmartRAG:
                      cancel_flag: dict[str, bool] | None = None,
                      user_context: str | None = None, recent_file_context: str | None = None,
                      attachments: list[dict[str, str]] | None = None,
-                     agent_mode: bool = False) -> tuple[str, list[str]]:
+                     agent_mode: bool = False,
+                     approve: Callable[[str], bool] | None = None) -> tuple[str, list[str]]:
         """Synchronous worker API; Flet calls this from its existing background thread."""
         active_chat = chat_id or self.chat_id
         self.last_sources = []
@@ -125,7 +125,7 @@ class SmartRAG:
             sources: list[str] = []
             answer = self.code_agent.run(
                 question, chat_history, on_step=(lambda step: on_token(step)) if on_token else None,
-                tools=self._agent_tools(active_chat, sources),
+                tools=self._agent_tools(active_chat, sources, attachments, approve, cancel_flag),
                 context=user_context or recent_file_context or "", cancel_flag=cancel_flag)
             self.last_sources = sources
             return answer, sources

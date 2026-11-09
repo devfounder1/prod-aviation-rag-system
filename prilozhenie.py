@@ -110,14 +110,6 @@ class AviationRAGApp:
         self.chat_manager = ChatManager()
         self._jobs = JobController()
         self.rag_system = None
-        # Устанавливаем callback для подтверждения кода агентом
-        try:
-            from agent_tools import set_approval_callback
-            set_approval_callback(self._show_code_approval_dialog)
-            logger.info("[APP] Callback подтверждения кода установлен")
-        except Exception as e:
-            logger.error(f"[APP] Не удалось установить callback: {e}", exc_info=True)
-        
         self.is_processing = False
         
         self.chat_list_controls = {}
@@ -216,7 +208,7 @@ class AviationRAGApp:
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
 
-    def _show_code_approval_dialog(self, code: str) -> bool:
+    def _show_code_approval_dialog(self, code: str, job: RequestJob | None = None) -> bool:
         """Показывает диалог подтверждения выполнения кода"""
         import threading
         
@@ -265,16 +257,16 @@ class AviationRAGApp:
             modal=True,
             title=ft.Row([
                 ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=28),
-                ft.Text("Агент хочет выполнить код", size=18, weight=ft.FontWeight.BOLD),
+                ft.Text("Агент хочет изменить оригинал файла", size=18, weight=ft.FontWeight.BOLD),
             ], spacing=10),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text("Проверьте код перед выполнением:", size=14, color=self.theme["text_secondary"]),
+                    ft.Text("Проверьте путь и новое содержимое файла:", size=14, color=self.theme["text_secondary"]),
                     ft.Container(height=10),
                     code_box,
                     ft.Container(height=15),
                     ft.Text(
-                        "Код будет выполнен в изолированной среде, но проверьте его на безопасность.",
+                        "Изменение будет записано в оригинал файла; перед записью создаётся резервная копия.",
                         size=12,
                         color="#f59e0b",
                         italic=True,
@@ -301,7 +293,15 @@ class AviationRAGApp:
         self.page.open(dlg)
         
         # Ждём ответа максимум 2 минуты, иначе авто-отмена (агент не зависнет навсегда)
-        event.wait(timeout=120)
+        if job:
+            def cancel_dialog() -> None:
+                result["approved"] = False
+                event.set()
+                self.page.run_thread(self.page.close, dlg)
+            job.token.on_cancel(cancel_dialog)
+        completed = event.wait(timeout=120)
+        if not completed:
+            self.page.run_thread(self.page.close, dlg)
         
         return result["approved"]
 
@@ -629,6 +629,11 @@ class AviationRAGApp:
         self.status_text.value = "● Готов"
         self.status_text.color = self.theme["status_ready"]
 
+    def _approve_for_job(self, job: RequestJob, content: str) -> bool:
+        if job.token.get("cancelled") or self.chat_manager.current_chat_id != job.chat_id:
+            return False
+        return self._show_code_approval_dialog(content, job)
+
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
                  history: list[dict[str, Any]]) -> None:
@@ -645,11 +650,8 @@ class AviationRAGApp:
             for attachment in attachments:
                 path = Path(attachment["path"])
                 if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
-                    from agent_tools import AGENT_WORKSPACE, register_attached_file
-                    directory = AGENT_WORKSPACE / "attached"
-                    directory.mkdir(parents=True, exist_ok=True)
-                    (directory / path.name).write_bytes(path.read_bytes())
-                    register_attached_file(path.name, str(path))
+                    from file_tools import prepare_attachments
+                    prepare_attachments(job.chat_id, [attachment])
                     file_notes.append("attached/" + path.name)
                     text = self._extract_text_from_file(str(path))
                     if text:
@@ -667,7 +669,8 @@ class AviationRAGApp:
                 on_token=on_token, cancel_flag=job.token,
                 user_context=user_context or None,
                 recent_file_context=self._chat_file_contexts.get(job.chat_id),
-                attachments=attachments, agent_mode=agent_mode)
+                attachments=attachments, agent_mode=agent_mode,
+                approve=lambda content: self._approve_for_job(job, content))
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._complete_job, job, response, sources)
         except Exception as exc:
