@@ -13,6 +13,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document as LangChainDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from config import settings
+from storage import get_chroma_client
 from model_registry import get_model_registry
 from logging_config import get_logger
 logger = get_logger(__name__)
@@ -48,8 +49,8 @@ class SimpleFileStore:
 class VectorStoreManager:
     def __init__(self, chat_id: str = "default"):
         self.chat_id = chat_id
-        self.vector_store = None
-        self.documents = []
+        self.vector_store: Optional[Chroma] = None
+        self.documents: list[LangChainDocument] = []
         
         # Получаем кэшированные эмбеддеры
         self.embeddings = get_model_registry().get_embeddings()
@@ -68,27 +69,26 @@ class VectorStoreManager:
         parent_store_path = Path(settings.chroma_persist_dir) / "parent_docs"
         self.docstore = SimpleFileStore(str(parent_store_path))
         
-        self.vector_store: Optional[Chroma] = None
         logging.info("Модель эмбеддингов, сплиттеры и хранилище инициализированы (оффлайн-режим).")
     
     def create(self, documents: List[LangChainDocument]) -> Chroma:
+        if not documents:
+            raise ValueError("Cannot rebuild knowledge from an empty document list")
         logging.info(f"Создание векторной базы (Parent-Child режим) из {len(documents)} документов")
         persist_path = Path(settings.chroma_persist_dir)
         
-        # ПОЛНОЕ УДАЛЕНИЕ СТАРОЙ БАЗЫ
-        if persist_path.exists():
-            logging.warning(f"Папка {persist_path} уже существует. Полностью удаляем...")
-            import shutil
-            shutil.rmtree(persist_path)
-            logging.info(f"Старая база удалена: {persist_path.absolute()}")
-        
-        # Создаем папку заново
-        persist_path.mkdir(parents=True, exist_ok=True)
-        
-        # ВАЖНО: пересоздаем хранилище родителей ПОСЛЕ удаления старой базы
-        parent_store_path = persist_path / "parent_docs"
-        self.docstore = SimpleFileStore(str(parent_store_path))
-        
+        client = get_chroma_client()
+        # Back up the shared database before replacing only the knowledge collection.
+        import shutil
+        from datetime import datetime
+        backup = persist_path.parent / "backups" / datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        shutil.copytree(persist_path, backup)
+        names = [c if isinstance(c, str) else c.name for c in client.list_collections()]
+        old_ids = []
+        if settings.knowledge_collection in names:
+            old_ids = client.get_collection(settings.knowledge_collection).get(include=[])["ids"]
+        self.docstore = SimpleFileStore(str(persist_path / "parent_docs"))
+
         logging.info("Создаю родительские документы...")
         
         parent_docs = self.parent_splitter.split_documents(documents)
@@ -128,14 +128,19 @@ class VectorStoreManager:
             documents=child_docs,
             embedding=self.embeddings,
             persist_directory=str(persist_path),
-            collection_name="PRL27_technical_docs_children"
+            collection_name=settings.knowledge_collection,
+            client=get_chroma_client()
         )
         
+        # Remove previous vectors only after all replacement embeddings were persisted.
+        if old_ids:
+            client.get_collection(settings.knowledge_collection).delete(ids=old_ids)
         logging.info(f"Векторная база и хранилище родителей созданы в: {persist_path.absolute()}")
         logger.info(f"Векторная база создана в: {persist_path.absolute()}")
         return self.vector_store
     
     def load(self) -> Chroma:
+        get_chroma_client()  # import legacy indexes before opening the shared collection
         persist_path = Path(settings.chroma_persist_dir)
         
         if not persist_path.exists():
@@ -148,7 +153,8 @@ class VectorStoreManager:
         
         self.vector_store = Chroma(
             persist_directory=str(persist_path),
-            collection_name="PRL27_technical_docs_children",
+            collection_name=settings.knowledge_collection,
+            client=get_chroma_client(),
             embedding_function=self.embeddings
         )
         
@@ -159,7 +165,7 @@ class VectorStoreManager:
         logging.info("Векторная база и хранилище родителей загружены")
         return self.vector_store
     
-    def search(self, query: str, k: int = None) -> List[LangChainDocument]:
+    def search(self, query: str, k: int | None = None) -> List[LangChainDocument]:
         """
         Поиск по векторной базе с Parent-Child логикой.
         
@@ -204,7 +210,7 @@ class VectorStoreManager:
                     if parent_text:
                         unique_parents.append(LangChainDocument(
                             page_content=parent_text,
-                            metadata={"filename": child.metadata.get("filename", "Unknown")}
+                            metadata={"filename": child.metadata.get("filename", "Unknown"), "parent_id": parent_id}
                         ))
                         
                     if len(unique_parents) >= k:

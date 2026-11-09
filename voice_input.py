@@ -49,8 +49,8 @@ def get_transcriber():
         if _transcriber is None:
             from faster_whisper import WhisperModel
             print("[VOICE] Загрузка моделей whisper...", flush=True)
-            wake = _load_with_retry(lambda: WhisperModel("base", device="cpu", compute_type="int8"))  # для wake-word (быстро)
-            main = _load_with_retry(lambda: WhisperModel("small", device="cpu", compute_type="int8"))  # для команд (точно)
+            wake = _load_with_retry(lambda: WhisperModel("base", device="cpu", compute_type="int8", local_files_only=True))  # для wake-word (быстро)
+            main = _load_with_retry(lambda: WhisperModel("small", device="cpu", compute_type="int8", local_files_only=True))  # для команд (точно)
             _transcriber = (wake, main)
             print("[VOICE] Модели whisper готовы", flush=True)
         return _transcriber

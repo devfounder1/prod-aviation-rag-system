@@ -36,10 +36,12 @@ THEME = {
 
 APP_NAME = "Aviation RAG-System"
 APP_VERSION = "1.0.0"
-CHATS_FILE = "chats_history.json"
 ASSETS_DIR = Path(__file__).parent / "assets"
 
+from config import settings
+
 AVAILABLE_MODELS = {
+    settings.llm_model_name: settings.llm_model_name,
     "Qwen 2.5 (14B)": "qwen2.5:14b",
     "Qwen 2.5 Coder Abliterated (14B)": "huihui_ai/qwen2.5-coder-abliterate:14b",
     "Qwen 3 Abliterated (14B)": "huihui_ai/qwen3-abliterated:14b",
@@ -47,7 +49,7 @@ AVAILABLE_MODELS = {
     "Qwen 2.5 (7B)": "qwen2.5:7b",
     "Gemma 2 (9B)": "gemma2:9b",
 }
-DEFAULT_MODEL_DISPLAY = "Qwen 2.5 (14B)"
+DEFAULT_MODEL_DISPLAY = settings.llm_model_name
 
 def load_assets():
     assets = {}
@@ -93,67 +95,7 @@ def load_assets():
     
     return assets
 
-class ChatManager:
-    def __init__(self, filename: str = CHATS_FILE):
-        self.filename = filename
-        self.chats = {}
-        self.current_chat_id = None
-        self.load()
-    
-    def load(self):
-        if Path(self.filename).exists():
-            with open(self.filename, 'r', encoding='utf-8') as f:
-                self.chats = json.load(f)
-        if not self.chats:
-            self.create_new_chat()
-        else:
-            self.current_chat_id = list(self.chats.keys())[-1]
-    
-    def save(self):
-        with open(self.filename, 'w', encoding='utf-8') as f:
-            json.dump(self.chats, f, ensure_ascii=False, indent=2)
-    
-    def create_new_chat(self, name: str = "Новый чат"):
-        import uuid
-        chat_id = str(uuid.uuid4())[:8]
-        self.chats[chat_id] = {"name": name, "messages": []}
-        self.current_chat_id = chat_id
-        self.save()
-        return chat_id
-    
-    def delete_chat(self, chat_id: str):
-        if chat_id in self.chats:
-            del self.chats[chat_id]
-            if self.current_chat_id == chat_id:
-                self.current_chat_id = list(self.chats.keys())[0] if self.chats else None
-                if not self.current_chat_id:
-                    self.create_new_chat()
-            self.save()
-    
-    def rename_chat(self, chat_id: str, new_name: str):
-        if chat_id in self.chats:
-            self.chats[chat_id]["name"] = new_name
-            self.save()
-    
-    def get_current_chat(self):
-        if self.current_chat_id and self.current_chat_id in self.chats:
-            return self.chats[self.current_chat_id]
-        return None
-    
-    def add_message(self, role: str, content: str, attachments=None, sources=None):
-        chat = self.get_current_chat()
-        if chat:
-            chat["messages"].append({
-                "role": role, 
-                "content": content, 
-                "attachments": attachments or [],
-                "sources": sources or []
-            })
-            self.save()
-    
-    def switch_chat(self, chat_id: str):
-        if chat_id in self.chats:
-            self.current_chat_id = chat_id
+from chat_store import ChatManager
 
 class AviationRAGApp:
     def __init__(self, page: ft.Page):
@@ -161,7 +103,7 @@ class AviationRAGApp:
         self.theme = THEME
         self.assets = load_assets()
         self.current_model_display = DEFAULT_MODEL_DISPLAY
-        self.current_model_ollama = AVAILABLE_MODELS[self.current_model_display]
+        self.current_model_local = AVAILABLE_MODELS[self.current_model_display]
         
         self.chat_manager = ChatManager()
         self.rag_system = None
@@ -524,7 +466,7 @@ class AviationRAGApp:
         
         # ЧЕКБОКС РЕЖИМА АГЕНТА
         self.agent_checkbox = ft.Checkbox(
-            label="Режим Агента (написание кода)",
+            label="Режим Агента (документы и файлы)",
             value=False,
             active_color="#f59e0b",
             on_change=lambda e: setattr(self, 'agent_mode', e.control.value)
@@ -685,7 +627,7 @@ class AviationRAGApp:
         code_files_note = []
         try:
             if self.rag_system is None:
-                self.rag_system = SmartRAG(model_name=self.current_model_ollama)
+                self.rag_system = SmartRAG(model_name=self.current_model_local)
             
             original_chat_id = self.chat_manager.current_chat_id
             self._streaming_chat_id = original_chat_id
@@ -744,10 +686,8 @@ class AviationRAGApp:
             
             if agent_mode and code_files_note:
                 user_input = (
-                    "ПРИКРЕПЛЁННЫЕ ФАЙЛЫ (читай через read_file('attached/ИМЯ_ФАЙЛА'), "
-                    "для кода правь через update_attached_file, для документов создавай новые через write_file):\n" 
-                    + "\n".join(code_files_note) +
-                    f"\nЗАДАЧА ПОЛЬЗОВАТЕЛЯ: {user_input}"
+                    f"Файл для работы: attached/{Path(attachments[0]['path']).name}. "
+                    f"Задача: {user_input}"
                 )
             
             response_data = self.rag_system.query_stream(
@@ -1606,6 +1546,7 @@ class AviationRAGApp:
             if add_document:
                 chat_id = self.chat_manager.current_chat_id or "global"
                 info = add_document(file_path, chat_id=chat_id)
+                info["chat_id"] = chat_id
                 self.page.run_thread(self._on_document_ready, info)
             else:
                 self.page.run_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
@@ -1627,13 +1568,7 @@ class AviationRAGApp:
         else:
             self._show_toast(f"Загружено: {info['filename']} ({info['chunks']} фр.)", color="#10b981", duration=2500)
             
-            chat = self.chat_manager.get_current_chat()
-            if chat:
-                if "attachments" not in chat or chat["attachments"] is None:
-                    chat["attachments"] = []
-                if info["filename"] not in chat["attachments"]:
-                    chat["attachments"].append(info["filename"])
-                self.chat_manager.save()
+            self.chat_manager.add_attachment(info["filename"], chat_id=info.get("chat_id"))
         
         self.status_text.value = "● Готов"
         self.status_text.color = self.theme["status_ready"]
@@ -1668,8 +1603,7 @@ class AviationRAGApp:
         chat = self.chat_manager.get_current_chat()
         if chat and "attachments" in chat:
             if filename in chat["attachments"]:
-                chat["attachments"].remove(filename)
-                self.chat_manager.save()
+                self.chat_manager.remove_attachment(filename)
                 
                 # Также удаляем из БД если есть функция
                 try:
@@ -1742,7 +1676,7 @@ class AviationRAGApp:
         
         # Добавляем финальное сообщение
         self._add_message_to_ui("assistant", response, sources=sources)
-        self.chat_manager.add_message("assistant", response, sources=sources)
+        self.chat_manager.add_message("assistant", response, sources=sources, chat_id=target_chat_id)
         
         self.is_processing = False
         self.status_text.value = "● Готов"
@@ -1985,11 +1919,11 @@ class AviationRAGApp:
             print(f"[DEBUG] Выбрана модель: {chosen}", flush=True)
             if chosen and chosen in AVAILABLE_MODELS:
                 self.current_model_display = chosen
-                self.current_model_ollama = AVAILABLE_MODELS[chosen]
+                self.current_model_local = AVAILABLE_MODELS[chosen]
                 self.model_label.value = f"{chosen}  •  PRL-27СМ RAG"
                 self.rag_system = None
                 status_lbl.value = f"Применена: {chosen}"
-                print(f"[DEBUG] Модель установлена: {self.current_model_ollama}", flush=True)
+                print(f"[DEBUG] Модель установлена: {self.current_model_local}", flush=True)
                 self.page.update()
 
         # ============================================
