@@ -32,3 +32,12 @@ def test_log_rotation_bounds_retention(tmp_path: Path) -> None:
         logger.info('x' * 60)
     handler.close()
     assert len(list(tmp_path.glob('app.log*'))) <= 3
+
+
+def test_missing_vision_model_warns_without_disabling_text_chat() -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={'data': [{'id': settings.llm_model_name}]})
+    result = check(httpx.MockTransport(respond), check_cache=False)
+    assert result['checks']['ollama']['status'] == 'ok'
+    assert result['checks']['vision']['status'] == 'warning'
+    assert result['checks']['vision']['configured_model_installed'] is False

@@ -14,7 +14,7 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
 from urllib.parse import urlsplit
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2048
+    vision_model_name: str = "qwen2.5vl:7b"
+    vision_max_tokens: int = Field(default=512, ge=64, le=2048)
     
     # ==========================================
     # НАСТРОЙКИ EMBEDDINGS (ВЕКТОРИЗАЦИЯ)

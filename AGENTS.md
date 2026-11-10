@@ -9,7 +9,7 @@
 
 ## Architecture
 - Keep the three routes: **CHAT / SEARCH / AGENT**. The explicit agent switch overrides automatic routing.
-- Use one selected local LLM for routing, answers, vision (if supported), and tool calling. Tool calling requires a capable local model.
+- Use the selected local LLM for routing, final answers and tool calling. Image attachments are automatically analyzed by a separate local `VISION_MODEL_NAME` worker (default `qwen2.5vl:7b`); pass its observations as untrusted data to the selected LLM. Do not switch the GUI model or require the user to switch it for images. If the selected model is already the configured vision model, direct image input may avoid a redundant second call. Tool calling requires a capable selected model.
 - Keep the agent universal: document search, analysis, creating/editing files, and code assistance; do not force every task into a code-edit/test loop.
 - SEARCH and AGENT use the same retrieval service. Scope attachment retrieval to the current `chat_id`; `global` uploads are explicitly shared.
 - Use **one persistent Chroma client** at `data/chroma/` with collections `knowledge_base` and `attachments`. Preserve parent-child documents.

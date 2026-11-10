@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
-from vision import UnsupportedImageModelError
+from vision import VisionAnalysisError
 from jobs import JobController, RequestJob
 from typing import Any, Callable
 
@@ -691,7 +691,7 @@ class AviationRAGApp:
                          getattr(exc.__cause__ or exc, "status_code", "unknown"))
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._fail_job, job, f"Ошибка: {exc}",
-                                   attachments if isinstance(exc, UnsupportedImageModelError) else [])
+                                   attachments if isinstance(exc, VisionAnalysisError) else [])
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""
