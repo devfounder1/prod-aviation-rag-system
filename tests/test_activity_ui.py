@@ -88,6 +88,8 @@ def test_empty_chat_has_working_examples_and_mascot() -> None:
         card.on_click(None)
         assert app.agent_checkbox.value is (mode == 'AGENT')
         app._send_example.assert_called()
+    app.agent_label.on_click(None)
+    assert not app.agent_mode and not app.agent_checkbox.value
     assert app.send_button.tooltip == 'Отправить сообщение'
     assert not app.stop_button.visible
 

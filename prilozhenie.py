@@ -207,6 +207,11 @@ class AviationRAGApp:
         self._set_activity(ActivityEvent("cancelled"))
         self.page.update()
 
+    def _toggle_agent_label(self, _: ft.ControlEvent) -> None:
+        self.agent_mode = not bool(self.agent_checkbox.value)
+        self.agent_checkbox.value = self.agent_mode
+        self.page.update()
+
     def _build_ui(self):
         self.chat_list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=4)
         
@@ -327,13 +332,21 @@ class AviationRAGApp:
 
         # ЧЕКБОКС РЕЖИМА АГЕНТА
         self.agent_checkbox = ft.Checkbox(
-            label="Режим агента",
-            label_style=ft.TextStyle(size=13, weight=ft.FontWeight.NORMAL, color=self.theme["text_primary"]),
-            width=190,
+            semantics_label="Режим агента",
+            width=34,
             value=False,
             active_color="#f59e0b",
             on_change=lambda e: setattr(self, 'agent_mode', e.control.value)
         )
+        # Keep text outside Checkbox: its native label ignores our font sizing on macOS.
+        self.agent_label = ft.TextButton(
+            content=ft.Text("Режим агента", size=13, weight=ft.FontWeight.NORMAL,
+                            color=self.theme["text_primary"]),
+            on_click=self._toggle_agent_label,
+            style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=4)),
+            tooltip="Включить или выключить режим агента",
+        )
+        self.agent_toggle = ft.Row([self.agent_checkbox, self.agent_label], tight=True, spacing=0)
         
         from agent_files_ui import AgentFilesUI
         self.agent_files = AgentFilesUI(
@@ -354,7 +367,7 @@ class AviationRAGApp:
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
-                ft.Row([self.agent_checkbox, self.files_button], spacing=16, wrap=True),
+                ft.Row([self.agent_toggle, self.files_button], spacing=16, wrap=True),
                 ft.Row([
                     self.mic_button,
                     icon_button("attach", "Прикрепить документ или изображение", self._handle_attach_click),
