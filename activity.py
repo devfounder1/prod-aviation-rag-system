@@ -25,5 +25,6 @@ def tool_activity(name: str) -> ActivityEvent:
         'replace_lines': 'Готовлю изменения', 'update_attached_file': 'Готовлю изменение оригинала',
         'read_file_lines': 'Читаю нужные строки', 'find_in_file': 'Ищу внутри файла',
         'get_file_structure': 'Изучаю структуру файла',
+        'check_python_syntax': 'Проверяю синтаксис Python',
     }
     return ActivityEvent('working', details.get(name, 'Выполняю задачу'), 'AGENT')

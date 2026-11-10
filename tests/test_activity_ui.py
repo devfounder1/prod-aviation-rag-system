@@ -70,8 +70,9 @@ def test_agent_reports_file_work_separately_from_answer(tmp_path: Path, monkeypa
     def approve(_: str) -> bool:
         assert events[-1].detail == 'Готовлю файл'
         return True
-    assert rag.query_stream('Создай файл', chat_id='a', agent_mode=True, approve=approve,
-                            on_activity=events.append, on_token=tokens.append)[0] == 'Файл готов'
+    answer = rag.query_stream('Создай файл', chat_id='a', agent_mode=True, approve=approve,
+                              on_activity=events.append, on_token=tokens.append)[0]
+    assert 'hello.txt' in answer and 'сохранён, запись проверена' in answer
     assert not tokens  # Progress must never become assistant answer/history text.
     assert 'working' in [event.phase for event in events]
     assert (file_tools.workspace_for_chat('a') / 'hello.txt').read_text() == 'Привет'

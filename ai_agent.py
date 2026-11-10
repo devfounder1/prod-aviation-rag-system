@@ -8,6 +8,9 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.tools import BaseTool
 from assistant_identity import IDENTITY_PROMPT, identity_reply
 from activity import ActivityEvent, tool_activity
+from file_receipts import FileReceipt, receipt_summary
+
+FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'update_attached_file'}
 
 SYSTEM_PROMPT = """Ты — универсальный локальный помощник. Помогай с документами,
 поиском информации, сравнением, расчётами, подготовкой файлов и программированием.
@@ -20,6 +23,13 @@ SYSTEM_PROMPT = """Ты — универсальный локальный пом
 После отказа инструмента не повторяй отклонённую запись без нового запроса пользователя.
 После успешной записи укажи имя файла и кнопку «Файлы чата»: там можно открыть папку
 или сохранить копию в удобное место. Не выдумывай путь и не сообщай об успехе до записи.
+Вложения в attached/ — входные копии. Их правки сохраняются инструментом в видимую папку results/.
+Для последующих правок открывай путь, который вернул инструмент. Не выдавай входную копию за результат.
+При изменении Python передавай настоящие переводы строк между командами, сохраняя экранирование внутри строк.
+Для добавления в конец используй append_to_file, для точечной правки replace_lines; не переписывай весь файл без необходимости.
+После ошибки синтаксиса исправь аргументы инструмента в этом же запросе.
+Доступна статическая проверка check_python_syntax. Запуск пользовательского кода и тестов недоступен;
+не обещай выполнить тесты и не называй проверку синтаксиса запуском тестов.
 Не обязательно изменять код или создавать файл: результатом может быть ответ или анализ.
 Для изменения существующего файла сначала прочитай его; для кода при необходимости проверь тестами.
 Не выходи за пределы рабочей папки. Если инструмент недоступен, объясни ограничение.
@@ -43,6 +53,15 @@ class LocalAgent:
         if identity is not None:
             return identity
         available = {tool.name: tool for tool in tools or []}
+        receipts: list[FileReceipt] = []
+        failures: dict[str, str] = {}
+        mutations_attempted = False
+
+        def file_outcome() -> str:
+            summary = receipt_summary(receipts) if receipts else 'Файл не сохранён: подтверждённого результата записи нет.'
+            if failures:
+                summary += '\nПоследние ошибки записи:\n' + '\n'.join(list(failures.values())[-3:])[:1500]
+            return summary
         model = self.llm.bind_tools(list(available.values()))
         messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + SYSTEM_PROMPT)]
         for message in (chat_history or [])[-8:]:
@@ -62,7 +81,7 @@ class LocalAgent:
             response = model.invoke(messages)
             messages.append(response)
             if not isinstance(response, AIMessage) or not response.tool_calls:
-                return str(response.content)
+                return file_outcome() if mutations_attempted else str(response.content)
             for call in response.tool_calls:
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено."
@@ -72,10 +91,24 @@ class LocalAgent:
                     on_activity(tool_activity(call['name']))
                 try:
                     tool = available.get(call["name"])
-                    result = tool.invoke(call["args"]) if tool else "Ошибка: инструмент недоступен"
+                    result = tool.invoke(call) if tool else "Ошибка: инструмент недоступен"
                 except Exception as exc:
                     result = f"Ошибка инструмента: {exc}"
-                messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+                tool_message = result if isinstance(result, ToolMessage) else ToolMessage(content=str(result), tool_call_id=call['id'])
+                messages.append(tool_message)
+                if call['name'] in FILE_MUTATIONS:
+                    mutations_attempted = True
+                    target = str(call['args'].get('file_path', call['args'].get('file_name', '')))
+                    if isinstance(tool_message.artifact, FileReceipt):
+                        receipts.append(tool_message.artifact)
+                        # A corrected attempt supersedes earlier validation errors.
+                        failures.pop(target, None)
+                    else:
+                        failures[target] = str(tool_message.content)
+                        if 'rejected' in str(tool_message.content).lower():
+                            return file_outcome()
+        if mutations_attempted:
+            return file_outcome() + '\nДостигнут лимит шагов; остальные действия могли не завершиться.'
         return "Достигнут лимит шагов. Задача может быть выполнена частично; уточните следующий шаг."
 
 

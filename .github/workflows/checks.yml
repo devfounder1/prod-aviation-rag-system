@@ -14,6 +14,6 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -q
       - name: Strict types for newly hardened modules
-        run: uv run mypy --strict --follow-imports=silent chat_store.py routing.py jobs.py file_tools.py agent_files_ui.py doctor.py logging_config.py vision.py retrieval_policy.py answer_prompts.py assistant_identity.py activity.py ui_components.py ui_dispatch.py cancellable_http.py llm_client.py
+        run: uv run mypy --strict --follow-imports=silent chat_store.py routing.py jobs.py file_tools.py agent_files_ui.py doctor.py logging_config.py vision.py retrieval_policy.py answer_prompts.py assistant_identity.py activity.py ui_components.py ui_dispatch.py cancellable_http.py llm_client.py file_validation.py file_receipts.py ai_agent.py
       - name: Syntax-check desktop integration
         run: uv run python -m py_compile prilozhenie.py smart_rag.py ai_agent.py
