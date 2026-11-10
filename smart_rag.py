@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import re
 from collections.abc import Callable
@@ -16,6 +15,7 @@ from ai_agent import LocalAgent
 from config import settings
 from llm_client import create_llm
 from jobs import request_scope
+from vision import image_content, unsupported_image_error, prefer_image_chat
 
 History = list[dict[str, Any]]
 logger = logging.getLogger(__name__)
@@ -98,9 +98,12 @@ class SmartRAG:
             try:
                 return self._query_stream(question, chat_history, chat_id, on_token, cancel_flag,
                                           user_context, recent_file_context, attachments, agent_mode, approve)
-            except Exception:
+            except Exception as exc:
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено.", []
+                capability_error = unsupported_image_error(exc, self.model_name, attachments)
+                if capability_error is not None:
+                    raise capability_error from exc
                 raise
 
     def _query_stream(self, question: str, chat_history: History | None = None,
@@ -117,7 +120,13 @@ class SmartRAG:
         self.last_context = ""
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
-        intent = "AGENT" if agent_mode else self.route(question, chat_history, attachments)
+        content, image_names = image_content(question, attachments)
+        if agent_mode:
+            intent: Intent = "AGENT"
+        elif prefer_image_chat(question, attachments):
+            intent = "CHAT"
+        else:
+            intent = self.route(question, chat_history, attachments)
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
         logger.info("Request route=%s model=%s chat_id=%s", intent, self.model_name, active_chat)
@@ -126,7 +135,9 @@ class SmartRAG:
             answer = self.code_agent.run(
                 question, chat_history, on_step=(lambda step: on_token(step)) if on_token else None,
                 tools=self._agent_tools(active_chat, sources, attachments, approve, cancel_flag),
-                context=user_context or recent_file_context or "", cancel_flag=cancel_flag)
+                context=user_context or recent_file_context or "", cancel_flag=cancel_flag,
+                image_parts=[part for part in content[1:] if isinstance(part, dict)])
+            sources = list(dict.fromkeys(image_names + sources))
             self.last_sources = sources
             return answer, sources
 
@@ -155,14 +166,7 @@ class SmartRAG:
             from langchain_core.messages import AIMessage
             cls = HumanMessage if item.get("role") == "user" else AIMessage
             messages.append(cls(content=str(item.get("content", ""))))
-        content: list[str | dict[str, Any]] = [{"type": "text", "text": question}]
-        for attachment in attachments or []:
-            path = Path(attachment.get("path", ""))
-            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-                mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else f"image/{path.suffix[1:].lower()}"
-                encoded = base64.b64encode(path.read_bytes()).decode()
-                content.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}})
-                sources.append(path.name)
+        sources.extend(image_names)
         messages.append(HumanMessage(content=content))
         answer = ""
         for chunk in self.llm.stream(messages):

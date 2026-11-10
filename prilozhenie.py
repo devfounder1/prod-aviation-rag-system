@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
+from vision import UnsupportedImageModelError
 from jobs import JobController, RequestJob
 from typing import Any, Callable
 
@@ -45,6 +46,7 @@ from config import settings
 AVAILABLE_MODELS = {
     settings.llm_model_name: settings.llm_model_name,
     "Qwen 2.5 (14B)": "qwen2.5:14b",
+    "Qwen 2.5 VL (7B, изображения)": "qwen2.5vl:7b",
     "Qwen 2.5 Coder Abliterated (14B)": "huihui_ai/qwen2.5-coder-abliterate:14b",
     "Qwen 3 Abliterated (14B)": "huihui_ai/qwen3-abliterated:14b",
     "Qwen 3.5 Uncensored Aggressive (9B)": "fredrezones55/Qwen3.5-Uncensored-HauhauCS-Aggressive:9b",
@@ -623,6 +625,16 @@ class AviationRAGApp:
         self._finalize_streaming_message(response, sources, job.chat_id)
         self._jobs.finish(job)
 
+    def _fail_job(self, job: RequestJob, response: str,
+                  retry_attachments: list[dict[str, str]]) -> None:
+        if retry_attachments:
+            pending = list(getattr(self, "_pending_attachments", []))
+            existing = {item["path"] for item in pending}
+            pending.extend(dict(item) for item in retry_attachments if item["path"] not in existing)
+            self._pending_attachments = pending
+            self._update_pending_attachments_display()
+        self._complete_job(job, response, [])
+
     def _cancel_active_job(self) -> None:
         self._jobs.cancel()
         self.is_processing = False
@@ -674,9 +686,12 @@ class AviationRAGApp:
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._complete_job, job, response, sources)
         except Exception as exc:
-            logger.error("Request failed: %s", type(exc).__name__)
+            logger.error("Request failed type=%s model=%s status=%s",
+                         type(exc).__name__, model_name,
+                         getattr(exc.__cause__ or exc, "status_code", "unknown"))
             if not job.token.get("cancelled"):
-                self._queue_job_ui(job, self._complete_job, job, f"Ошибка: {exc}", [])
+                self._queue_job_ui(job, self._fail_job, job, f"Ошибка: {exc}",
+                                   attachments if isinstance(exc, UnsupportedImageModelError) else [])
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""

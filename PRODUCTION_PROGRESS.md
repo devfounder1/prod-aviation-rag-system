@@ -24,3 +24,9 @@ Release checks: 47 tests pass in the project and in a fresh offline-installed ma
 Final GUI launch was observed, but the native automation input/window channel was unreliable during the repeat smoke test. Do not count that final GUI pass as completed; the previous pre-hardening GUI smoke test is not proof of the new boundaries. New boundaries are covered by unit/integration tests and direct live Ollama checks. Additional platform UI testing, expert-reviewed real-domain evaluation and long-running load tests remain release gates.
 
 Privacy: runtime directories were removed from the branch tip without deleting existing local files. They still exist in older repository commits; this work does not rewrite history. A checksum comparison verified 5,234 original document/legacy-index files unchanged.
+
+## Image-input correction — 2026-11-10
+
+Reproduced Ollama HTTP 400: qwen2.5:14b rejected multimodal requests. Added the already-installed qwen2.5vl:7b to the GUI selector, actionable capability errors and request-owned attachment restoration for retry. Plain image questions bypass unrelated RAG retrieval; explicit document references still route normally. Agent requests now receive image parts instead of silently dropping them. The selected model remains unchanged unless the user changes it.
+
+Validation: 54 tests pass; vision.py passes strict mypy; smart_rag.py and ai_agent.py pass scoped mypy. A real local qwen2.5vl:7b request described the repository icon (shield, wings, aircraft and a dog wearing goggles) and returned icon.png as its source. The text-model failure was also exercised against real Ollama. No model downloads or cloud inference were used.
