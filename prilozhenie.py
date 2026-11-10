@@ -328,6 +328,7 @@ class AviationRAGApp:
         # ЧЕКБОКС РЕЖИМА АГЕНТА
         self.agent_checkbox = ft.Checkbox(
             label="Режим агента",
+            label_style=ft.TextStyle(size=13, weight=ft.FontWeight.NORMAL, color=self.theme["text_primary"]),
             width=190,
             value=False,
             active_color="#f59e0b",
