@@ -15,6 +15,7 @@ sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
 from vision import VisionAnalysisError
 from jobs import JobController, RequestJob
+from ui_dispatch import UiDispatcher
 from typing import Any, Callable
 from activity import ActivityEvent
 from ui_components import PALETTE, ActivityView, brand_icon, icon_button, welcome_panel
@@ -81,6 +82,12 @@ class AviationRAGApp:
         
         self.chat_manager = ChatManager()
         self._jobs = JobController()
+        self._shutdown_started = threading.Event()
+        self._ui = UiDispatcher(page, self._shutdown)
+        self._voice_recording = False
+        self._voice_busy = False
+        self._voice_stop = None
+        self.wake_listener = None
         self.rag_system = None
         self.is_processing = False
         
@@ -110,11 +117,6 @@ class AviationRAGApp:
             self.wake_listener = None
         self.page.update()
         self._load_current_chat()
-        
-        self._voice_recording = False
-        self._voice_busy = False
-        self._voice_stop = None
-        self.wake_listener = None
         
         # ПРОВЕРКА ПЕРВОГО ЗАПУСКА (вызываем напрямую, без потока!)
         prl_path = self._load_prl_path()
@@ -176,15 +178,51 @@ class AviationRAGApp:
             "main": "SF Pro Display" if platform.system() == "Darwin" else "Segoe UI",
         }
         self.page.spacing = 0
-        
+        self.page.on_disconnect = self._on_page_closed
+        self.page.on_close = self._on_page_closed
+        self.page.window.prevent_close = True
+        self.page.window.on_event = self._on_window_event
+
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
+
+    @property
+    def _ui_dispatch(self) -> UiDispatcher:
+        if not hasattr(self, "_ui"):
+            self._ui = UiDispatcher(self.page, self._shutdown)
+        return self._ui
+
+    def _run_ui_thread(self, action: Callable[..., Any], *args: Any) -> bool:
+        return self._ui_dispatch.run_thread(action, *args)
+
+    def _shutdown(self, _: Any = None) -> None:
+        if not hasattr(self, "_shutdown_started"):
+            self._shutdown_started = threading.Event()
+        if self._shutdown_started.is_set():
+            return
+        self._shutdown_started.set()
+        self._ui_dispatch.close()
+        self._jobs.close()
+        self.is_processing = False
+        if getattr(self, "_voice_stop", None) is not None:
+            self._voice_stop.set()
+        if getattr(self, "wake_listener", None) is not None:
+            self.wake_listener.stop()
+
+    async def _on_page_closed(self, _: Any) -> None:
+        self._shutdown()
+
+    async def _on_window_event(self, event: ft.WindowEvent) -> None:
+        if event.type == ft.WindowEventType.CLOSE:
+            self._shutdown()
+            self.page.window.destroy()
 
     def _show_file_approval_dialog(self, content: str, job: RequestJob) -> bool:
         from agent_files_ui import FileApproval
         return FileApproval(
             self.page, job,
             lambda: self._jobs.current is job and self.chat_manager.current_chat_id == job.chat_id,
+            ui=self._ui_dispatch,
         ).wait(content)
 
     def _set_activity(self, event: ActivityEvent) -> None:
@@ -351,7 +389,7 @@ class AviationRAGApp:
         from agent_files_ui import AgentFilesUI
         self.agent_files = AgentFilesUI(
             self.page, lambda: self.chat_manager.current_chat_id,
-            lambda message: self._show_toast(message),
+            lambda message: self._show_toast(message), ui=self._ui_dispatch,
         )
         self.files_button = ft.TextButton(
             content=ft.Row([brand_icon("files", 22), ft.Text("Файлы чата")], tight=True, spacing=7),
@@ -493,23 +531,26 @@ class AviationRAGApp:
         self._open_file_browser()
 
     def _queue_job_ui(self, job: RequestJob, action: Callable[..., Any], *args: Any) -> None:
+        if not self._jobs.is_current(job) or not self._ui_dispatch.active:
+            return
         def apply() -> None:
             if self.chat_manager.current_chat_id == job.chat_id:
                 action(*args)
-        self.page.run_thread(self._jobs.apply, job, apply)
+        self._run_ui_thread(self._jobs.apply, job, apply)
 
     def _apply_activity(self, event: ActivityEvent) -> None:
         self._set_activity(event)
         self.page.update()
 
     def _queue_activity(self, job: RequestJob, event: ActivityEvent) -> None:
-        # One page event loop preserves phase ordering; the job guard rejects late updates.
-        async def apply() -> None:
+        if not self._jobs.is_current(job) or not self._ui_dispatch.active:
+            return
+        def apply() -> None:
             def update() -> None:
                 if self.chat_manager.current_chat_id == job.chat_id:
                     self._apply_activity(event)
             self._jobs.apply(job, update)
-        self.page.run_task(apply)
+        self._ui_dispatch.post(apply)
 
     def _complete_job(self, job: RequestJob, response: str, sources: list[str]) -> None:
         self._finalize_streaming_message(response, sources, job.chat_id)
@@ -532,7 +573,8 @@ class AviationRAGApp:
         self._set_activity(ActivityEvent("ready"))
 
     def _approve_for_job(self, job: RequestJob, content: str) -> bool:
-        if job.token.get("cancelled") or self.chat_manager.current_chat_id != job.chat_id:
+        if (not self._jobs.is_current(job) or not self._ui_dispatch.active
+                or self.chat_manager.current_chat_id != job.chat_id):
             return False
         self._queue_activity(job, ActivityEvent("approval", route="AGENT"))
         approved = self._show_file_approval_dialog(content, job)
@@ -543,7 +585,7 @@ class AviationRAGApp:
                  agent_mode: bool, job: RequestJob, model_name: str,
                  history: list[dict[str, Any]]) -> None:
         try:
-            if job.token.get("cancelled"):
+            if not self._ui_dispatch.active or not self._jobs.is_current(job):
                 return
             rag = self.rag_system
             if rag is None or rag.model_name != model_name:
@@ -580,6 +622,8 @@ class AviationRAGApp:
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._complete_job, job, response, sources)
         except Exception as exc:
+            if job.token.get("cancelled") or not self._ui_dispatch.active:
+                return
             logger.error("Request failed type=%s model=%s status=%s",
                          type(exc).__name__, model_name,
                          getattr(exc.__cause__ or exc, "status_code", "unknown"))
@@ -705,9 +749,9 @@ class AviationRAGApp:
         time.sleep(0.3)  # даём Flutter дочиста закрыть окно браузера папок
         try:
             if target == 'first':
-                self.page.run_thread(self._show_first_launch_dialog)
+                self._run_ui_thread(self._show_first_launch_dialog)
             else:
-                self.page.run_thread(self._show_settings, None)
+                self._run_ui_thread(self._show_settings, None)
         except Exception as ex:
             print(f"[DEBUG] Не удалось снова открыть окно: {ex}", flush=True)
 
@@ -995,31 +1039,15 @@ class AviationRAGApp:
 
     def _delete_chat(self, chat_id):
         
-        #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ УДАЛЕНИИ ЧАТА
-        if chat_id == getattr(self, '_streaming_chat_id', None):
-            self._jobs.cancel()
-            print(f"[DELETE] Останавливаем генерацию при удалении чата", flush=True)
-            if hasattr(self, '_stream_cancel_flag'):
-                self._stream_cancel_flag["cancelled"] = True
-            
-            if hasattr(self, '_streaming_row') and self._streaming_row in self.messages_column.controls:
-                self.messages_column.controls.remove(self._streaming_row)
-            
-            self.is_processing = False
-            self._set_activity(ActivityEvent("ready"))
-            self.page.update()
-        
         chat_name = self.chat_manager.chats.get(chat_id, {}).get("name", "этот чат")
         
         def confirm_delete(e):
             self.page.close(dlg)
             
-            # УСТАНАВЛИВАЕМ ФЛАГ ОТМЕНЫ, если удаляем чат, в котором идёт генерация
-            if chat_id == getattr(self, '_streaming_chat_id', None):
-                print(f"[STREAM] Устанавливаем флаг отмены для чата {chat_id}", flush=True)
-                if hasattr(self, '_stream_cancel_flag'):
-                    self._stream_cancel_flag["cancelled"] = True
-            
+            current = self._jobs.current
+            if current is not None and current.chat_id == chat_id:
+                self._cancel_active_job()
+
             # Логика переключения на другой чат
             if chat_id == self.chat_manager.current_chat_id:
                 other_chats = [cid for cid in self.chat_manager.chats.keys() if cid != chat_id]
@@ -1254,15 +1282,15 @@ class AviationRAGApp:
             from voice_input import record_until_stop, transcribe
             audio = record_until_stop(self._voice_stop)
             self._voice_recording = False
-            self.page.run_thread(self._set_mic_state, "busy")
-            self.page.run_thread(self._show_toast, "Распознаю речь (первый запуск может грузить модель)...", "#f59e0b", 4000)
+            self._run_ui_thread(self._set_mic_state, "busy")
+            self._run_ui_thread(self._show_toast, "Распознаю речь (первый запуск может грузить модель)...", "#f59e0b", 4000)
             text = transcribe(audio)
-            self.page.run_thread(self._voice_apply_text, text)
+            self._run_ui_thread(self._voice_apply_text, text)
         except Exception as ex:
             logger.error(f"[VOICE] Ошибка записи: {ex}", exc_info=True)
             self._voice_recording = False
-            self.page.run_thread(self._set_mic_state, "idle")
-            self.page.run_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
+            self._run_ui_thread(self._set_mic_state, "idle")
+            self._run_ui_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
     
     def _voice_apply_text(self, text):
         self._set_mic_state("idle")
@@ -1289,12 +1317,13 @@ class AviationRAGApp:
     
     def _on_wake_word(self):
         """Вызывается ИЗ ПОТОКА СЛУШАТЕЛЯ — паузу ставим сразу, без задержек"""
-        if self._voice_recording or self._voice_busy or self._wake_busy:
+        if (not self._ui_dispatch.active or self.is_processing
+                or self._voice_recording or self._voice_busy or self._wake_busy):
             return
         self._wake_busy = True
         if self.wake_listener:
             self.wake_listener.paused.set()   # мгновенно, в этом же потоке
-        self.page.run_thread(self._wake_ui)
+        self._run_ui_thread(self._wake_ui)
     
     def _wake_ui(self):
         try:
@@ -1319,14 +1348,14 @@ class AviationRAGApp:
             # Если поймали хвост wake-слова или огрызок — слушаем ещё раз
             if text and (_fuzzy_match(text, WAKE_WORDS) or len(text.strip()) < 4):
                 print(f"[VOICE] Пойман хвост wake-слова: '{text}' — слушаю команду заново", flush=True)
-                self.page.run_thread(self._show_toast, "🐶 Слушаю! Скажи команду...", "#f59e0b", 2500)
+                self._run_ui_thread(self._show_toast, "🐶 Слушаю! Скажи команду...", "#f59e0b", 2500)
                 audio = record_until_silence()
                 text = transcribe(audio)
             
-            self.page.run_thread(self._wake_apply, text)
+            self._run_ui_thread(self._wake_apply, text)
         except Exception as ex:
             print(f"[VOICE] Ошибка wake-команды: {ex}", flush=True)
-            self.page.run_thread(self._wake_apply, "")
+            self._run_ui_thread(self._wake_apply, "")
     
     def _wake_apply(self, text):
         if self.wake_listener:
@@ -1387,13 +1416,13 @@ class AviationRAGApp:
                 chat_id = self.chat_manager.current_chat_id or "global"
                 info = add_document(file_path, chat_id=chat_id)
                 info["chat_id"] = chat_id
-                self.page.run_thread(self._on_document_ready, info)
+                self._run_ui_thread(self._on_document_ready, info)
             else:
-                self.page.run_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
+                self._run_ui_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
         except Exception as e:
             import traceback
             logger.error(f"Критическая ошибка: {e}", exc_info=True)
-            self.page.run_thread(self._on_document_ready, {"error": str(e)})
+            self._run_ui_thread(self._on_document_ready, {"error": str(e)})
 
     def _on_document_ready(self, info):
         if "error" in info:
@@ -1527,6 +1556,8 @@ class AviationRAGApp:
 
     def _show_toast(self, message: str, color: str = "#334155", duration: int = 2500):
         """Показывает компактное toast-уведомление в правом верхнем углу"""
+        if not self._ui_dispatch.active:
+            return
         toast = ft.Container(
             content=ft.Text(message, size=12, color="#ffffff"),
             bgcolor=color,
@@ -1544,9 +1575,11 @@ class AviationRAGApp:
         def remove_toast():
             import time
             time.sleep(duration / 1000)
-            if toast in self.page.overlay:
-                self.page.overlay.remove(toast)
-                self.page.update()
+            def dismiss() -> None:
+                if toast in self.page.overlay:
+                    self.page.overlay.remove(toast)
+                    self.page.update()
+            self._ui_dispatch.post(dismiss)
         
         threading.Thread(target=remove_toast, daemon=True).start()
 
@@ -1923,7 +1956,7 @@ class AviationRAGApp:
                     documents = ingestor.process()
                     
                     if not documents:
-                        self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                        self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                              "Документы не найдены в папке!", "#ef4444", 4000)
                         self.is_processing = False
                         return
@@ -1932,13 +1965,13 @@ class AviationRAGApp:
                     manager = VectorStoreManager()
                     manager.create(documents)
                     
-                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                    self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                           f"Индекс перестроен! {len(documents)} документов", "#10b981", 5000)
                     
                 except Exception as ex:
                     import traceback
                     print(f"[ERROR] Ошибка перестроения: {ex}\n{traceback.format_exc()}", flush=True)
-                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                    self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                           f"Ошибка: {str(ex)[:60]}...", "#ef4444", 6000)
                 finally:
                     self.is_processing = False
@@ -1947,7 +1980,7 @@ class AviationRAGApp:
             threading.Thread(target=run_rebuild, daemon=True).start()
 
         rebuild_btn = ft.ElevatedButton(
-            "Перестроить индекс PRL-27",
+            "Перестроить индекс",
             icon=ft.Icons.BUILD,
             on_click=rebuild_prl_index,
             style=ft.ButtonStyle(bgcolor="#3b82f6", color="#ffffff"),

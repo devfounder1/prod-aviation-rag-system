@@ -16,28 +16,31 @@ import flet as ft  # type: ignore[import-untyped]
 from file_tools import output_files, workspace_for_chat
 from jobs import RequestJob
 from ui_components import brand_icon
+from ui_dispatch import UiDispatcher
 
 
 class FileApproval:
     """Worker waits; only the page event loop opens/closes the modal."""
 
     def __init__(self, page: ft.Page, job: RequestJob,
-                 is_current: Callable[[], bool]) -> None:
+                 is_current: Callable[[], bool], ui: UiDispatcher | None = None) -> None:
         self.page = page
         self.job = job
         self.is_current = is_current
+        self.ui = ui or UiDispatcher(page)
         self.done = threading.Event()
         self.lock = threading.Lock()
         self.approved = False
         self.dialog: ft.AlertDialog | None = None
 
     def decide(self, approved: bool) -> None:
+        allowed = approved and self.ui.active and self.is_current() and not self.job.token.get('cancelled')
         with self.lock:
             if self.done.is_set():
                 return
-            self.approved = approved and self.is_current() and not self.job.token.get('cancelled')
+            self.approved = bool(allowed)
             self.done.set()
-        self.page.run_task(self.close)
+        self.ui.run_task(self.close)
 
     async def close(self) -> None:
         if self.dialog is not None:
@@ -75,7 +78,8 @@ class FileApproval:
 
     def wait(self, description: str, timeout: float = 120) -> bool:
         self.job.token.on_cancel(lambda: self.decide(False))
-        self.page.run_task(self.show, description)
+        if not self.ui.run_task(self.show, description):
+            self.decide(False)
         if not self.done.wait(timeout):
             self.decide(False)
         return self.approved and not self.job.token.get('cancelled') and self.is_current()
@@ -119,10 +123,11 @@ def export_copy(chat_id: str, source: Path, destination: Path) -> None:
 
 class AgentFilesUI:
     def __init__(self, page: ft.Page, current_chat: Callable[[], str | None],
-                 notify: Callable[[str], None]) -> None:
+                 notify: Callable[[str], None], ui: UiDispatcher | None = None) -> None:
         self.page = page
         self.current_chat = current_chat
         self.notify = notify
+        self.ui = ui or UiDispatcher(page)
         self.pending_export: tuple[str, Path] | None = None
         self.picker = ft.FilePicker(on_result=self.save_result)
         page.overlay.append(self.picker)
@@ -132,7 +137,7 @@ class AgentFilesUI:
         if not chat_id:
             self.notify('Сначала создайте чат')
             return
-        self.page.run_task(self.show, chat_id)
+        self.ui.run_task(self.show, chat_id)
 
     async def show(self, chat_id: str) -> None:
         try:
@@ -170,7 +175,7 @@ class AgentFilesUI:
         self.page.open(dialog)
 
     def reveal(self, chat_id: str, path: Path) -> None:
-        if self.current_chat() != chat_id:
+        if not self.ui.active or self.current_chat() != chat_id:
             return
         try:
             root = workspace_for_chat(chat_id).resolve()
@@ -181,7 +186,7 @@ class AgentFilesUI:
             self.notify(f'Не удалось открыть папку: {exc}')
 
     def save_as(self, chat_id: str, path: Path, dialog: ft.AlertDialog) -> None:
-        if self.current_chat() != chat_id or self.pending_export:
+        if not self.ui.active or self.current_chat() != chat_id or self.pending_export:
             return
         self.pending_export = (chat_id, path)
         self.page.close(dialog)
@@ -195,7 +200,7 @@ class AgentFilesUI:
 
     def save_result(self, event: ft.FilePickerResultEvent) -> None:
         pending, self.pending_export = self.pending_export, None
-        if not pending or not event.path:
+        if not pending or not event.path or not self.ui.active:
             return
         chat_id, source = pending
         if self.current_chat() != chat_id:

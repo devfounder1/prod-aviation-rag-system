@@ -53,7 +53,10 @@ def test_gui_callback_checks_ownership_at_execution_time() -> None:
     from prilozhenie import AviationRAGApp
     app = AviationRAGApp.__new__(AviationRAGApp)
     pending = []
-    app.page = SimpleNamespace(run_thread=lambda fn, *args: pending.append((fn, args)))
+    app.page = SimpleNamespace(executor=None,
+        loop=SimpleNamespace(is_closed=lambda: False, is_running=lambda: True,
+            call_soon_threadsafe=lambda fn: pending.append(fn),
+            run_in_executor=lambda executor, fn: (fn(), MagicMock())[1]))
     app.chat_manager = SimpleNamespace(current_chat_id='a')
     app._jobs = JobController()
     old = app._jobs.start('a')
@@ -61,6 +64,6 @@ def test_gui_callback_checks_ownership_at_execution_time() -> None:
     app._queue_job_ui(old, lambda: calls.append('stale'))
     app._jobs.start('b')
     app.chat_manager.current_chat_id = 'b'
-    for fn, args in pending:
-        fn(*args)
+    for fn in pending:
+        fn()
     assert calls == []

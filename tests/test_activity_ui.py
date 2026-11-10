@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +18,8 @@ def desktop() -> Any:
     from prilozhenie import AviationRAGApp
     app = AviationRAGApp.__new__(AviationRAGApp)
     app.page = MagicMock()
+    app.page.loop.is_closed.return_value = False
+    app.page.loop.is_running.return_value = True
     app.assets = {key: str(ASSETS / path) for key, path in {
         'icon': 'icon.png', 'assistant': 'avatars/assistant.png', 'user': 'avatars/user.png',
     }.items()}
@@ -113,12 +114,12 @@ def test_approval_is_quiet_and_completion_stops_native_animation() -> None:
 def test_late_phase_from_old_job_cannot_change_current_chat() -> None:
     app = desktop()
     queued: list[Any] = []
-    app.page.run_task.side_effect = lambda handler: queued.append(handler)
+    app.page.loop.call_soon_threadsafe.side_effect = lambda handler: queued.append(handler)
     job = app._jobs.start('a')
     app._queue_activity(job, ActivityEvent('searching', route='SEARCH'))
     app.chat_manager.current_chat_id = 'b'
     app._jobs.start('b')
-    asyncio.run(queued[0]())
+    queued[0]()
     assert app.activity.event.phase == 'ready'
 
 

@@ -3,7 +3,6 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from collections.abc import Awaitable, Callable
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -14,23 +13,15 @@ from agent_files_ui import AgentFilesUI, FileApproval, export_copy
 from jobs import RequestJob
 
 
-def run_task(handler: Callable[..., Awaitable[Any]], *args: Any) -> Any:
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(handler(*args))
-    return loop.create_task(handler(*args))
-
 
 @pytest.mark.parametrize('allow', [True, False])
 def test_modal_decision_resumes_worker_and_controls_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allow: bool,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, allow: bool, page_loop: asyncio.AbstractEventLoop,
 ) -> None:
     monkeypatch.setattr(file_tools, 'WORKSPACE', tmp_path / 'chats')
-    page = MagicMock()
+    page = MagicMock(loop=page_loop)
     opened = []
     opened_event = threading.Event()
-    page.run_task.side_effect = run_task
     def open_dialog(dialog: Any) -> None:
         opened.append(dialog)
         opened_event.set()
@@ -54,12 +45,12 @@ def test_modal_decision_resumes_worker_and_controls_write(
         assert 'Created/updated' in result
     else:
         assert 'rejected' in result
+    asyncio.run_coroutine_threadsafe(asyncio.sleep(0), page_loop).result(timeout=3)
     page.close.assert_called_with(dialog)
 
 
-def test_cancellation_timeout_and_stale_dialog_cannot_authorize_write() -> None:
-    page = MagicMock()
-    page.run_task.side_effect = run_task
+def test_cancellation_timeout_and_stale_dialog_cannot_authorize_write(page_loop: asyncio.AbstractEventLoop) -> None:
+    page = MagicMock(loop=page_loop)
     job = RequestJob('a')
     approval = FileApproval(page, job, lambda: True)
     page.open.side_effect = lambda _: job.token.__setitem__('cancelled', True)
@@ -101,13 +92,13 @@ def test_outputs_export_preserves_bytes_and_hides_attachments(
 
 
 def test_save_picker_cancel_and_chat_switch_leave_files_untouched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, page_loop: asyncio.AbstractEventLoop,
 ) -> None:
     monkeypatch.setattr(file_tools, 'WORKSPACE', tmp_path / 'chats')
     source = file_tools.workspace_for_chat('a') / 'report.txt'
     source.write_text('result')
     current = ['a']
-    ui = AgentFilesUI(MagicMock(), lambda: current[0], MagicMock())
+    ui = AgentFilesUI(MagicMock(loop=page_loop), lambda: current[0], MagicMock())
     ui.pending_export = ('a', source)
     ui.save_result(MagicMock(path=None))
     assert ui.pending_export is None

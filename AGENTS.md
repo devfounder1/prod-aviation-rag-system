@@ -25,12 +25,13 @@
 5. **Agent Tools:** Restrict universal-agent file access to a per-chat workspace in `agent_workspace/chats/`; capture attachment permissions and approval callbacks per request. Do not reintroduce global callbacks or registries into SmartRAG. Editing an attached original requires explicit GUI approval. Do not expose arbitrary host Python execution without a separately designed isolation mechanism.
 6. **File UX:** In the desktop GUI, every file mutation uses the request-owned approval callback with the exact path and future content. The modal uses buttons, never conversational yes/no loops. Rejection, timeout, stale jobs and cancellation must prevent the pending write. Keep results in existing chat workspaces; expose them through «Файлы чата», reveal-in-folder and an explicit Save As copy. Do not move existing output or automatically write to Desktop/Documents. Attachment copies stay separate from generated results. CLI workspace writes may run without a GUI callback; originals still require explicit approval.
 7. **Visual Progress:** Use request-owned `ActivityEvent` callbacks for work phases; keep progress out of answer text/history. Schedule ordered phase updates on the page event loop and reject callbacks from stale/cancelled jobs. Use local vector artwork in `assets/icons/ui/`, the existing pilot-dog mascot and native Flet animations; do not add perpetual Python animation threads or remote UI assets. Approval and terminal states must stop progress animation.
+8. **Shutdown:** Use the page-owned UiDispatcher for background UI work. Never create/schedule coroutines after page-loop shutdown. Close/disconnect cancels jobs and stops the retained voice listener; lifecycle event handlers must not depend on a closing executor. Keep cancellable loopback HTTP reads active before response headers as well as during streaming. Do not reintroduce synchronous response.close callbacks on the UI cancellation path.
 
 ## Verification & Commands
 - Install locked dependencies: `uv sync`
 - Check types (flat source layout): `uv run mypy . --exclude '(^tests/|^agent_workspace/|^\.venv/)'` (legacy typing issues remain; report them honestly).
 - Run tests: `uv run pytest`
-- Run GUI: `uv run flet run prilozhenie.py`
+- Run GUI: `uv run python prilozhenie.py`; use `uv run flet run prilozhenie.py` for development with automatic reload.
 - Run CLI: `uv run python main.py`
 - Check/import storage: `uv run python storage.py` (stop any old app instance before the first migration).
 - Start Ollama if not already running: `ollama serve`; inspect installed models with `ollama list`. Do not pull models automatically.
