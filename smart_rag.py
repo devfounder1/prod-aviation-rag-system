@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from routing import Intent, classify
 from answer_prompts import SEARCH_SYSTEM_PROMPT, strip_unverified_expansions
+from assistant_identity import IDENTITY_PROMPT, identity_reply
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool, BaseTool
@@ -123,6 +124,11 @@ class SmartRAG:
         self.last_context = ""
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
+        identity = identity_reply(question) if not attachments else None
+        if identity is not None:
+            if on_token:
+                on_token(identity)
+            return identity, []
         image_names = [Path(a.get("path", "")).name for a in attachments or []
                        if Path(a.get("path", "")).suffix.lower() in IMAGE_SUFFIXES]
         content: list[str | dict[str, Any]] = [{"type": "text", "text": question}]
@@ -173,6 +179,7 @@ class SmartRAG:
         instruction = (SEARCH_SYSTEM_PROMPT if intent == "SEARCH" else
                        "Ты — локальный помощник. Отвечай на языке пользователя. "
                        "Помогай с общими вопросами и общением.")
+        instruction = IDENTITY_PROMPT + "\n\n" + instruction
         if visual_context:
             instruction += (
                 " Используй наблюдения локального анализатора изображения для ответа. "

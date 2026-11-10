@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from assistant_identity import IDENTITY_PROMPT, identity_reply
 
 SYSTEM_PROMPT = """Ты — универсальный локальный помощник. Помогай с документами,
 поиском информации, сравнением, расчётами, подготовкой файлов и программированием.
@@ -34,9 +35,14 @@ class LocalAgent:
             tools: list[BaseTool] | None = None, context: str = "",
             cancel_flag: dict[str, bool] | None = None,
             image_parts: list[dict[str, Any]] | None = None) -> str:
+        if cancel_flag and cancel_flag.get("cancelled"):
+            return "Выполнение отменено."
+        identity = identity_reply(task) if not context and not image_parts else None
+        if identity is not None:
+            return identity
         available = {tool.name: tool for tool in tools or []}
         model = self.llm.bind_tools(list(available.values()))
-        messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
+        messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + SYSTEM_PROMPT)]
         for message in (chat_history or [])[-8:]:
             cls = HumanMessage if message.get("role") == "user" else AIMessage
             messages.append(cls(content=str(message.get("content", ""))))

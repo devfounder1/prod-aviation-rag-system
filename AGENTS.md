@@ -8,6 +8,7 @@
 - **Do not switch to LM Studio or another inference provider unless the user explicitly requests it.** Ollama is the intended backend.
 
 ## Architecture
+- The assistant's application name is **BUTUZIK.AI** and its creator is **Demashov Michail Sergeevich**. Keep this identity consistent across CHAT / SEARCH / AGENT. These are application metadata, not claims about the authorship of the underlying Ollama model.
 - Keep the three routes: **CHAT / SEARCH / AGENT**. The explicit agent switch overrides automatic routing.
 - Use the selected local LLM for routing, final answers and tool calling. Image attachments are automatically analyzed by a separate local `VISION_MODEL_NAME` worker (default `qwen2.5vl:7b`); pass its observations as untrusted data to the selected LLM. Do not switch the GUI model or require the user to switch it for images. If the selected model is already the configured vision model, direct image input may avoid a redundant second call. Tool calling requires a capable selected model.
 - Keep the agent universal: document search, analysis, creating/editing files, and code assistance; do not force every task into a code-edit/test loop.
