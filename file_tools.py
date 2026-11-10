@@ -235,6 +235,20 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
         return 'Синтаксис Python корректен. Код и тесты не запускались.'
 
     @tool(response_format='content_and_artifact')
+    def run_python(file_path: str) -> tuple[str, object]:
+        """Run a chat Python file in an offline disposable Docker sandbox, never on the host. Returns actual stdout/stderr/exit code."""
+        from sandbox_runner import execute
+        result = execute(root, file_path, cancel=cancel)
+        return result.render(), result
+
+    @tool(response_format='content_and_artifact')
+    def run_pytest(file_path: str) -> tuple[str, object]:
+        """Run a specific Python test file with pytest inside the offline Docker sandbox. Does not modify host files."""
+        from sandbox_runner import execute
+        result = execute(root, file_path, tests=True, cancel=cancel)
+        return result.render(), result
+
+    @tool(response_format='content_and_artifact')
     def update_attached_file(file_name: str, new_content: str) -> tuple[str, FileReceipt | None]:
         """Update an original attached in THIS request, after explicit approval of exact content."""
         active()
@@ -269,4 +283,4 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
         return f'Original updated after approval and verified: {source}', receipt
 
     return [read_file, write_file, list_directory, append_to_file, read_file_lines,
-            replace_lines, find_in_file, get_file_structure, check_python_syntax, update_attached_file]
+            replace_lines, find_in_file, get_file_structure, check_python_syntax, run_python, run_pytest, update_attached_file]

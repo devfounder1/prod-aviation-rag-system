@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 from assistant_identity import IDENTITY_PROMPT, identity_reply
 from activity import ActivityEvent, tool_activity
 from file_receipts import FileReceipt, receipt_summary
+from sandbox_runner import ExecutionResult
 
 FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'update_attached_file'}
 
@@ -28,8 +29,9 @@ SYSTEM_PROMPT = """Ты — универсальный локальный пом
 При изменении Python передавай настоящие переводы строк между командами, сохраняя экранирование внутри строк.
 Для добавления в конец используй append_to_file, для точечной правки replace_lines; не переписывай весь файл без необходимости.
 После ошибки синтаксиса исправь аргументы инструмента в этом же запросе.
-Доступна статическая проверка check_python_syntax. Запуск пользовательского кода и тестов недоступен;
-не обещай выполнить тесты и не называй проверку синтаксиса запуском тестов.
+Для проверки используй check_python_syntax; для реального запуска run_python, для тестового файла run_pytest.
+Запуск разрешён только этими инструментами в локальной Docker-песочнице. При недоступности песочницы
+сообщи причину; не предлагай обход через хост. Не выдумывай успешные тесты: опирайся на фактические результаты.
 Не обязательно изменять код или создавать файл: результатом может быть ответ или анализ.
 Для изменения существующего файла сначала прочитай его; для кода при необходимости проверь тестами.
 Не выходи за пределы рабочей папки. Если инструмент недоступен, объясни ограничение.
@@ -56,12 +58,17 @@ class LocalAgent:
         receipts: list[FileReceipt] = []
         failures: dict[str, str] = {}
         mutations_attempted = False
+        executions: list[str] = []
+        executed_verified = False
 
         def file_outcome() -> str:
             summary = receipt_summary(receipts) if receipts else 'Файл не сохранён: подтверждённого результата записи нет.'
+            if executed_verified:
+                summary = summary.replace('Синтаксис Python проверен. Код и тесты не запускались.',
+                                          'Синтаксис Python проверен; результаты запуска приведены ниже.')
             if failures:
                 summary += '\nПоследние ошибки записи:\n' + '\n'.join(list(failures.values())[-3:])[:1500]
-            return summary
+            return summary + ('\n\n' + '\n\n'.join(executions) if executions else '')
         model = self.llm.bind_tools(list(available.values()))
         messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + SYSTEM_PROMPT)]
         for message in (chat_history or [])[-8:]:
@@ -81,7 +88,7 @@ class LocalAgent:
             response = model.invoke(messages)
             messages.append(response)
             if not isinstance(response, AIMessage) or not response.tool_calls:
-                return file_outcome() if mutations_attempted else str(response.content)
+                return file_outcome() if mutations_attempted else '\n\n'.join(executions) if executions else str(response.content)
             for call in response.tool_calls:
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено."
@@ -96,6 +103,10 @@ class LocalAgent:
                     result = f"Ошибка инструмента: {exc}"
                 tool_message = result if isinstance(result, ToolMessage) else ToolMessage(content=str(result), tool_call_id=call['id'])
                 messages.append(tool_message)
+                if call['name'] in {'run_python', 'run_pytest'}:
+                    executed_verified = executed_verified or isinstance(tool_message.artifact, ExecutionResult)
+                    executions.append(call['name'] + '\n' + (tool_message.artifact.render() if isinstance(tool_message.artifact, ExecutionResult)
+                                      else 'Запуск не подтверждён: ' + str(tool_message.content)))
                 if call['name'] in FILE_MUTATIONS:
                     mutations_attempted = True
                     target = str(call['args'].get('file_path', call['args'].get('file_name', '')))
@@ -109,6 +120,8 @@ class LocalAgent:
                             return file_outcome()
         if mutations_attempted:
             return file_outcome() + '\nДостигнут лимит шагов; остальные действия могли не завершиться.'
+        if executions:
+            return '\n\n'.join(executions) + '\nДостигнут лимит шагов.'
         return "Достигнут лимит шагов. Задача может быть выполнена частично; уточните следующий шаг."
 
 
