@@ -22,6 +22,7 @@
 3. **Type Hints:** Use strict type annotations for new function signatures.
 4. **Data Preservation:** Never delete or overwrite original documents or legacy Chroma databases as part of a backend change. Migration reads snapshots, verifies copied records, and retains originals. A knowledge-index rebuild must preserve the attachments collection and create a backup first.
 5. **Agent Tools:** Restrict universal-agent file access to a per-chat workspace in `agent_workspace/chats/`; capture attachment permissions and approval callbacks per request. Do not reintroduce global callbacks or registries into SmartRAG. Editing an attached original requires explicit GUI approval. Do not expose arbitrary host Python execution without a separately designed isolation mechanism.
+6. **File UX:** In the desktop GUI, every file mutation uses the request-owned approval callback with the exact path and future content. The modal uses buttons, never conversational yes/no loops. Rejection, timeout, stale jobs and cancellation must prevent the pending write. Keep results in existing chat workspaces; expose them through «Файлы чата», reveal-in-folder and an explicit Save As copy. Do not move existing output or automatically write to Desktop/Documents. Attachment copies stay separate from generated results. CLI workspace writes may run without a GUI callback; originals still require explicit approval.
 
 ## Verification & Commands
 - Install locked dependencies: `uv sync`

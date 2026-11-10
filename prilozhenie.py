@@ -210,102 +210,12 @@ class AviationRAGApp:
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
 
-    def _show_code_approval_dialog(self, code: str, job: RequestJob | None = None) -> bool:
-        """Показывает диалог подтверждения выполнения кода"""
-        import threading
-        
-        result = {"approved": False}
-        event = threading.Event()
-        dlg = None
-        
-        def on_approve(e):
-            result["approved"] = True
-            event.set()
-            try:
-                self.page.close(dlg)
-            except Exception:
-                pass
-        
-        def on_cancel(e):
-            result["approved"] = False
-            event.set()
-            try:
-                self.page.close(dlg)
-            except Exception:
-                pass
-        
-        # Прокручиваемый блок с кодом (ВМЕСТО max_height, которого нет в Flet 0.28)
-        code_box = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text(
-                        code,
-                        font_family="monospace",
-                        size=12,
-                        color="#e2e8f0",
-                        selectable=True,
-                    ),
-                ],
-                scroll=ft.ScrollMode.AUTO,   # 🆕 прокрутка для длинного кода
-                height=350,                  # 🆕 фиксированная высота области
-                spacing=0,
-            ),
-            bgcolor="#1e293b",
-            padding=15,
-            border_radius=8,
-        )
-        
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=28),
-                ft.Text("Агент хочет изменить оригинал файла", size=18, weight=ft.FontWeight.BOLD),
-            ], spacing=10),
-            content=ft.Container(
-                content=ft.Column([
-                    ft.Text("Проверьте путь и новое содержимое файла:", size=14, color=self.theme["text_secondary"]),
-                    ft.Container(height=10),
-                    code_box,
-                    ft.Container(height=15),
-                    ft.Text(
-                        "Изменение будет записано в оригинал файла; перед записью создаётся резервная копия.",
-                        size=12,
-                        color="#f59e0b",
-                        italic=True,
-                    ),
-                ], tight=True, spacing=5),
-                width=700,
-                padding=20,
-            ),
-            actions=[
-                ft.TextButton(
-                    "❌ Отмена",
-                    on_click=on_cancel,
-                    style=ft.ButtonStyle(color="#94a3b8"),
-                ),
-                ft.ElevatedButton(
-                    "✅ Запустить код",
-                    on_click=on_approve,
-                    bgcolor="#10b981",
-                    color="white",
-                ),
-            ],
-        )
-        
-        self.page.open(dlg)
-        
-        # Ждём ответа максимум 2 минуты, иначе авто-отмена (агент не зависнет навсегда)
-        if job:
-            def cancel_dialog() -> None:
-                result["approved"] = False
-                event.set()
-                self.page.run_thread(self.page.close, dlg)
-            job.token.on_cancel(cancel_dialog)
-        completed = event.wait(timeout=120)
-        if not completed:
-            self.page.run_thread(self.page.close, dlg)
-        
-        return result["approved"]
+    def _show_file_approval_dialog(self, content: str, job: RequestJob) -> bool:
+        from agent_files_ui import FileApproval
+        return FileApproval(
+            self.page, job,
+            lambda: self._jobs.current is job and self.chat_manager.current_chat_id == job.chat_id,
+        ).wait(content)
 
     def _make_icon_button(self, icon_path, on_click, tooltip="", size=32, bgcolor=None):
         """Создает кнопку с кастомной PNG-иконкой"""
@@ -477,10 +387,21 @@ class AviationRAGApp:
             on_change=lambda e: setattr(self, 'agent_mode', e.control.value)
         )
         
+        from agent_files_ui import AgentFilesUI
+        self.agent_files = AgentFilesUI(
+            self.page, lambda: self.chat_manager.current_chat_id,
+            lambda message: self._show_toast(message),
+        )
+        self.files_button = ft.TextButton(
+            "Файлы чата", icon=ft.Icons.FOLDER_OPEN,
+            on_click=self.agent_files.open,
+            tooltip="Результаты агента: открыть папку или сохранить файл в удобное место",
+        )
+
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
-                self.agent_checkbox,   # ЧЕКБОКС (над полем ввода)
+                ft.Row([self.agent_checkbox, self.files_button], wrap=True),
                 ft.Row([
                     self.mic_button,
                     self._make_icon_button(
@@ -644,7 +565,7 @@ class AviationRAGApp:
     def _approve_for_job(self, job: RequestJob, content: str) -> bool:
         if job.token.get("cancelled") or self.chat_manager.current_chat_id != job.chat_id:
             return False
-        return self._show_code_approval_dialog(content, job)
+        return self._show_file_approval_dialog(content, job)
 
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
