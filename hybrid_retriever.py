@@ -13,6 +13,7 @@ from model_registry import get_model_registry
 from logging_config import get_logger
 logger = get_logger(__name__)
 from exceptions import RetrieverError
+from retrieval_policy import allow_source
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s : %(message)s')
 
@@ -105,7 +106,8 @@ class HybridRetriever:
             # Если BM25 не построен, fallback на чистый векторный поиск
             if self.bm25 is None:
                 logging.info("BM25 индекс отсутствует, используем только векторный поиск.")
-                return self.vector_store_manager.search(query, k=k)
+                return [d for d in self.vector_store_manager.search(query, k=k * 3)
+                        if allow_source(str(d.metadata.get("filename", "")), query)][:k]
             
             # ИСПРАВЛЕНО: candidate_k не должен зависеть от self.documents
             # Используем фиксированный лимит или размер BM25 индекса
@@ -128,6 +130,11 @@ class HybridRetriever:
             bm25_results = [self.documents[i] for i in top_bm25_indices]
             logger.info(f"[RETRIEVER] bm25_search вернул {len(bm25_results)} документов")
             
+            vector_results = [d for d in vector_results
+                              if allow_source(str(d.metadata.get("filename", "")), query)]
+            bm25_results = [d for d in bm25_results
+                            if allow_source(str(d.metadata.get("filename", "")), query)]
+
             # Bring lexical children to the same parent level as vector results.
             parents = []
             seen = set()

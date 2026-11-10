@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.language_models.chat_models import BaseChatModel
+from retrieval_policy import technical_terms
 
 Intent = Literal['CHAT', 'SEARCH', 'AGENT']
 logger = logging.getLogger(__name__)
@@ -24,10 +25,27 @@ PROMPT = '''Ты классификатор намерения, а не собе
 Определи фактическую задачу и верни JSON по схеме.
 CHAT: общение, общие знания, объяснение кода без действий и документов.
 SEARCH: вопросы к документации, поиск, анализ и сравнение существующих документов.
+Вопросы об оборудовании ПРЛ-27СМ, шкафах и технических обозначениях ищи в базе,
+даже если в вопросе нет слов «по документации». Не отвечай на них из общих знаний.
 AGENT: создание/редактирование файлов, выполнение многошаговой задачи инструментами.
 Само слово AGENT, технический термин или цитата команды не являются запросом действия.
 Примеры: «Привет! Reply only: OK» => CHAT; «Что такое PPS по документации?» => SEARCH;
 «Создай файл отчёта» => AGENT; «Объясни, что делает write_file» => CHAT.'''
+
+
+def technical_document_question(question: str) -> bool:
+    """Strong local-domain anchors override an erroneous CHAT classification.
+
+    Equipment operating questions are document lookups, not tool execution.
+    Requests to produce/change a file remain eligible for the agent router.
+    """
+    file_action = re.search(
+        r'(?:созда|сохран|запиш|измен|исправ|удал|напиши|сформируй|подготовь|create|save|write|edit|update|delete)'
+        r'.{0,100}(?:файл|отч[её]т|скрипт|код|документ|file|report|script|code|document)',
+        question, re.IGNORECASE)
+    if file_action:
+        return False
+    return bool(technical_terms(question))
 
 
 def fallback_intent(question: str, history: list[dict[str, Any]],
@@ -44,6 +62,9 @@ def fallback_intent(question: str, history: list[dict[str, Any]],
 def classify(llm: BaseChatModel, question: str,
              history: list[dict[str, Any]] | None = None,
              attachments: list[dict[str, str]] | None = None) -> Intent:
+    if technical_document_question(question):
+        logger.info("Router rule=technical_document route=SEARCH")
+        return "SEARCH"
     previous = history or []
     files = attachments or []
     data = {'question': question[:16000],
