@@ -10,6 +10,7 @@ from typing import Any
 from routing import Intent, classify
 from answer_prompts import SEARCH_SYSTEM_PROMPT, strip_unverified_expansions
 from assistant_identity import IDENTITY_PROMPT, identity_reply
+from activity import ActivityEvent
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool, BaseTool
@@ -95,13 +96,17 @@ class SmartRAG:
                      user_context: str | None = None, recent_file_context: str | None = None,
                      attachments: list[dict[str, str]] | None = None,
                      agent_mode: bool = False,
-                     approve: Callable[[str], bool] | None = None) -> tuple[str, list[str]]:
+                     approve: Callable[[str], bool] | None = None,
+                     on_activity: Callable[[ActivityEvent], None] | None = None) -> tuple[str, list[str]]:
+        if on_activity and not (cancel_flag and cancel_flag.get('cancelled')):
+            on_activity(ActivityEvent('queued'))
         with request_scope(cancel_flag) as active:
             if not active:
                 return "Выполнение отменено.", []
             try:
                 return self._query_stream(question, chat_history, chat_id, on_token, cancel_flag,
-                                          user_context, recent_file_context, attachments, agent_mode, approve)
+                                          user_context, recent_file_context, attachments, agent_mode, approve,
+                                          on_activity)
             except Exception as exc:
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено.", []
@@ -117,13 +122,16 @@ class SmartRAG:
                      user_context: str | None = None, recent_file_context: str | None = None,
                      attachments: list[dict[str, str]] | None = None,
                      agent_mode: bool = False,
-                     approve: Callable[[str], bool] | None = None) -> tuple[str, list[str]]:
+                     approve: Callable[[str], bool] | None = None,
+                     on_activity: Callable[[ActivityEvent], None] | None = None) -> tuple[str, list[str]]:
         """Synchronous worker API; Flet calls this from its existing background thread."""
         active_chat = chat_id or self.chat_id
         self.last_sources = []
         self.last_context = ""
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
+        if on_activity:
+            on_activity(ActivityEvent('thinking', 'Определяю, как помочь'))
         identity = identity_reply(question) if not attachments else None
         if identity is not None:
             if on_token:
@@ -142,22 +150,29 @@ class SmartRAG:
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено.", []
         if image_names:
+            if on_activity:
+                on_activity(ActivityEvent('vision', route=intent))
             if self.model_name == settings.vision_model_name:
                 # An explicitly selected vision model can answer directly.
                 content, _ = image_content(question, attachments)
             else:
-                visual_context = self.vision.analyze(question, attachments or [], cancel_flag, on_token)
+                visual_context = self.vision.analyze(
+                    question, attachments or [], cancel_flag,
+                    (lambda detail: on_activity(ActivityEvent('vision', detail, intent)))
+                    if on_activity else on_token)
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено.", []
         logger.info("Request route=%s model=%s chat_id=%s", intent, self.model_name, active_chat)
         if intent == "AGENT":
             sources: list[str] = []
             answer = self.code_agent.run(
-                question, chat_history, on_step=(lambda step: on_token(step)) if on_token else None,
+                question, chat_history,
+                on_step=(lambda step: on_token(step)) if on_token and not on_activity else None,
                 tools=self._agent_tools(active_chat, sources, attachments, approve, cancel_flag),
                 context="\n\n".join(filter(None, [user_context or recent_file_context, visual_context])),
                 cancel_flag=cancel_flag,
-                image_parts=[part for part in content[1:] if isinstance(part, dict)])
+                image_parts=[part for part in content[1:] if isinstance(part, dict)],
+                on_activity=on_activity)
             sources = list(dict.fromkeys(image_names + sources))
             self.last_sources = sources
             return answer, sources
@@ -165,6 +180,8 @@ class SmartRAG:
         context = visual_context
         sources = []
         if intent == "SEARCH":
+            if on_activity:
+                on_activity(ActivityEvent('searching', route='SEARCH'))
             context, sources = self.search_documents(question, active_chat)
             if visual_context:
                 context = visual_context + "\n\n" + context
@@ -195,10 +212,14 @@ class SmartRAG:
         sources.extend(image_names)
         messages.append(HumanMessage(content=content))
         answer = ""
+        if on_activity:
+            on_activity(ActivityEvent('thinking', 'Обдумываю ответ', intent))
         for chunk in self.llm.stream(messages, temperature=0 if intent == "SEARCH" else settings.llm_temperature):
             if cancel_flag and cancel_flag.get("cancelled"):
                 return "Выполнение отменено.", []
             if isinstance(chunk.content, str):
+                if not answer and chunk.content and on_activity:
+                    on_activity(ActivityEvent('answering', route=intent))
                 answer += chunk.content
                 if on_token:
                     on_token(strip_unverified_expansions(answer, context) if intent == "SEARCH" else answer)

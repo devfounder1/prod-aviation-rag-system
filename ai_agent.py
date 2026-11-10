@@ -7,6 +7,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from assistant_identity import IDENTITY_PROMPT, identity_reply
+from activity import ActivityEvent, tool_activity
 
 SYSTEM_PROMPT = """Ты — универсальный локальный помощник. Помогай с документами,
 поиском информации, сравнением, расчётами, подготовкой файлов и программированием.
@@ -34,7 +35,8 @@ class LocalAgent:
             on_step: Callable[[str], None] | None = None,
             tools: list[BaseTool] | None = None, context: str = "",
             cancel_flag: dict[str, bool] | None = None,
-            image_parts: list[dict[str, Any]] | None = None) -> str:
+            image_parts: list[dict[str, Any]] | None = None,
+            on_activity: Callable[[ActivityEvent], None] | None = None) -> str:
         if cancel_flag and cancel_flag.get("cancelled"):
             return "Выполнение отменено."
         identity = identity_reply(task) if not context and not image_parts else None
@@ -55,6 +57,8 @@ class LocalAgent:
         for _ in range(self.max_iterations):
             if cancel_flag and cancel_flag.get("cancelled"):
                 return "Выполнение отменено."
+            if on_activity:
+                on_activity(ActivityEvent('thinking', 'Обдумываю следующий шаг', 'AGENT'))
             response = model.invoke(messages)
             messages.append(response)
             if not isinstance(response, AIMessage) or not response.tool_calls:
@@ -64,6 +68,8 @@ class LocalAgent:
                     return "Выполнение отменено."
                 if on_step:
                     on_step(f"Инструмент: {call['name']}")
+                if on_activity:
+                    on_activity(tool_activity(call['name']))
                 try:
                     tool = available.get(call["name"])
                     result = tool.invoke(call["args"]) if tool else "Ошибка: инструмент недоступен"

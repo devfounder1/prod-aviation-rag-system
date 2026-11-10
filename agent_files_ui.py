@@ -15,6 +15,7 @@ import flet as ft  # type: ignore[import-untyped]
 
 from file_tools import output_files, workspace_for_chat
 from jobs import RequestJob
+from ui_components import brand_icon
 
 
 class FileApproval:
@@ -48,7 +49,7 @@ class FileApproval:
             return
         self.dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text('Подтвердить действие агента'),
+            title=ft.Row([brand_icon('approval', 28), ft.Text('Подтвердить действие агента')], spacing=10),
             content=ft.Container(
                 width=700,
                 content=ft.Column([
@@ -146,7 +147,7 @@ class AgentFilesUI:
         dialog: ft.AlertDialog
         for path in paths:
             rows.append(ft.Row([
-                ft.Icon(ft.Icons.INSERT_DRIVE_FILE_OUTLINED),
+                brand_icon('files'),
                 ft.Text(str(path.relative_to(root)), expand=True, selectable=True),
                 ft.IconButton(ft.Icons.FOLDER_OPEN, tooltip='Показать в папке',
                               on_click=lambda _, p=path: self.reveal(chat_id, p)),

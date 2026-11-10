@@ -166,6 +166,7 @@ def test_gui_retains_image_for_retry(picture: Path) -> None:
     app._pending_attachments = [{'path': 'other.png', 'name': 'other.png'}]
     app._update_pending_attachments_display = MagicMock()
     app._finalize_streaming_message = MagicMock()
+    app._apply_activity = MagicMock()
     image = {'path': str(picture), 'name': picture.name}
     app._fail_job(job, 'Vision unavailable', [image])
     assert app._pending_attachments == [{'path': 'other.png', 'name': 'other.png'}, image]
