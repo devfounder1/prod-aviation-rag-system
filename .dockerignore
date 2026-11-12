@@ -3,6 +3,7 @@
 !gost_formatter.py
 !document_layout.py
 !document_elements.py
+!metafile_layout.py
 !standard_profiles.py
 !standards/
 !standards/gost_r_2_105_2019.json

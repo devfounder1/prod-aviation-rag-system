@@ -296,3 +296,32 @@ def test_real_local_document_export_is_complete_and_source_unchanged(tmp_path: P
     assert result.pages and '27.5 V' in result.text
     assert result.runtime_fingerprint == document_runner.runtime_fingerprint()
     assert result.docx != raw and result.warnings
+
+
+@pytest.mark.skipif(os.environ.get('BUTUZ_DOCUMENTS_LIVE') != '1', reason='Requires prepared local document image')
+def test_real_continuation_has_no_blank_pages_or_orphan_caption(tmp_path: Path) -> None:
+    from docx.enum.text import WD_BREAK
+
+    document = Document(); document.add_heading('Requirements', level=1)
+    document.add_paragraph('Таблица 1')
+    first = document.add_table(rows=2, cols=2)
+    first.cell(0,0).text='Наименование'; first.cell(0,1).text='Значение'
+    first.cell(1,0).text='Record A'; first.cell(1,1).text='27.5'
+    document.add_page_break()
+    caption = document.add_paragraph()
+    caption.paragraph_format.page_break_before = True
+    caption.add_run().add_break(WD_BREAK.PAGE)
+    caption.add_run('Продолжение таблицы 1')
+    second = document.add_table(rows=2,cols=2)
+    second.cell(0,0).text='Наименование'; second.cell(0,1).text='Значение'
+    second.cell(1,0).text='Record B'; second.cell(1,1).text='0.001'
+    source = tmp_path/'source.docx'; document.save(source); before=source.read_bytes()
+    result = document_runner.prepare_document(source)
+    assert source.read_bytes() == before
+    assert len(result.pages) == 1
+    with ZipFile(io.BytesIO(result.docx)) as package:
+        tree=ET.fromstring(package.read('word/document.xml'))
+        ns={'w':W[1:-1]}
+        rows=tree.find('w:body',ns).findall(W+'tbl')[1].findall(W+'tr')
+        assert rows[0].xpath('.//w:t/text()',namespaces=ns) == ['Продолжение таблицы 1']
+        assert rows[1].find('w:trPr/w:tblHeader',ns).get(W+'val') == '1'

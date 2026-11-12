@@ -107,6 +107,87 @@ def _paragraph(paragraph: Any, size: int, *, keep: bool, center: bool = False) -
             _set(rpr, 'sz', val=str(size * 2)); _set(rpr, 'szCs', val=str(size * 2))
 
 
+def normalize_page_starts(document: Any) -> int:
+    """Coalesce manual and paragraph page breaks at one controlled boundary.
+
+    Do not discard intentional breaks elsewhere or any section boundary. Empty
+    paragraphs/bookmarks stay in the package; only redundant page-break nodes
+    next to a known pageBreakBefore are removed.
+    """
+    body = document.find(W + 'body')
+    if body is None:
+        return 0
+    changed = 0
+    tokens = './/w:t | .//w:br | .//w:drawing | .//w:pict | .//w:object | .//w:fldChar | .//w:tab'
+
+    def trim(paragraph: Any, *, leading: bool) -> int:
+        removed = 0
+        nodes = paragraph.xpath(tokens, namespaces=NS)
+        for node in (nodes if leading else reversed(nodes)):
+            if node.tag == W + 't' and not (node.text or '').strip():
+                continue
+            if node.tag != W + 'br' or node.get(W + 'type') != 'page':
+                break
+            node.getparent().remove(node); removed += 1
+        return removed
+
+    blocks = list(body)
+    for index, paragraph in enumerate(blocks):
+        if paragraph.tag != W + 'p' or paragraph.find('w:pPr/w:sectPr', NS) is not None:
+            continue
+        page_start = paragraph.find('w:pPr/w:pageBreakBefore', NS)
+        if page_start is None or page_start.get(W + 'val', '1') in {'0', 'off', 'false'}:
+            continue
+        changed += trim(paragraph, leading=True)
+        for previous in reversed(blocks[:index]):
+            if previous.tag != W + 'p' or previous.find('w:pPr/w:sectPr', NS) is not None:
+                break
+            changed += trim(previous, leading=False)
+            if previous.xpath(tokens, namespaces=NS):
+                break
+    return changed
+
+
+def normalize_main_flow(document: Any, roles: dict[str, str]) -> int:
+    """Reflow recognized main prose instead of retaining old manual pagination."""
+    body = document.find(W + 'body')
+    if body is None:
+        return 0
+    active = False
+    appendix = False
+    removed = 0
+    for paragraph in body.findall(W + 'p'):
+        style = paragraph.find('w:pPr/w:pStyle', NS)
+        role = roles.get(style.get(W + 'val', ''), '') if style is not None else 'normal'
+        if active and _text(paragraph).startswith('Приложение '):
+            _set(_node(paragraph, 'pPr'), 'pageBreakBefore', val='1')
+            appendix = True
+            continue
+        if role in {'heading1', 'заголовок1'}:
+            active = True
+        if not active or appendix or paragraph.xpath('.//w:sectPr | .//w:fldChar | .//w:drawing | .//w:pict | .//w:object', namespaces=NS):
+            continue
+        nodes = paragraph.xpath('.//w:t | .//w:br', namespaces=NS)
+        for index, node in enumerate(nodes):
+            if node.tag != W + 'br' or node.get(W + 'type') != 'page':
+                continue
+            before = any(n.tag == W + 't' and (n.text or '').strip() for n in nodes[:index])
+            after = any(n.tag == W + 't' and (n.text or '').strip() for n in nodes[index + 1:])
+            if before and after:
+                node.set(W + 'type', 'textWrapping')
+            else:
+                node.getparent().remove(node)
+            removed += 1
+        if role in {'normal', 'bodytext', 'heading2', 'heading3', 'heading4',
+                    'заголовок2', 'заголовок3', 'заголовок4'}:
+            _set(_node(paragraph, 'pPr'), 'pageBreakBefore', val='0')
+        if not _text(paragraph) and not paragraph.xpath('.//w:br | .//w:tab', namespaces=NS):
+            pr = _node(paragraph, 'pPr')
+            _set(pr, 'keepNext', val='0'); _set(pr, 'keepLines', val='0')
+            _set(pr, 'spacing', before='0', after='0', line='20', lineRule='exact')
+    return removed
+
+
 def _header_rows(rows: list[Any]) -> int:
     count = 0
     for row in rows:
@@ -238,6 +319,62 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
     return None if headers else 'Головка таблицы не определена: строки данных не назначены заголовком.'
 
 
+def _flow_continuation(body: Any, previous: Any, caption: Any, table: Any) -> bool:
+    """Keep a manual continuation editable without imposing a new page.
+
+    Its existing caption becomes the first (borderless) repeated header row,
+    so a renderer cannot leave it alone at the bottom of the previous page.
+    No duplicate labels or cell text are removed or regenerated.
+    """
+    blocks = list(body)
+    start, end = blocks.index(previous) + 1, blocks.index(caption)
+    between = blocks[start:end]
+    if any(p.tag != W + 'p' or _text(p)
+           or p.xpath('.//w:sectPr | .//w:drawing | .//w:pict | .//w:object | .//w:fldChar', namespaces=NS)
+           for p in between):
+        return False
+    if not _header_rows(table.findall(W + 'tr')):
+        return False
+    # Pure page-break spacers belong to the old manual pagination. Preserve
+    # bookmarks/other nodes and collapse only their presentation.
+    for paragraph in [*between, caption]:
+        if paragraph.find('w:pPr/w:sectPr', NS) is not None:
+            return False
+    for paragraph in [*between, caption]:
+        for node in paragraph.xpath('.//w:br[@w:type="page"]', namespaces=NS):
+            node.getparent().remove(node)
+        _set(_node(paragraph, 'pPr'), 'pageBreakBefore', val='0')
+    width = sum(_integer(col, 'w') for col in table.findall('w:tblGrid/w:gridCol', NS))
+    columns = len(table.findall('w:tblGrid/w:gridCol', NS))
+    row = ET.Element(W + 'tr')
+    rpr = _node(row, 'trPr')
+    _set(rpr, 'cantSplit', val='1'); _set(rpr, 'tblHeader', val='1')
+    cell = ET.SubElement(row, W + 'tc')
+    cpr = _node(cell, 'tcPr')
+    _set(cpr, 'tcW', w=str(width), type='dxa')
+    _set(cpr, 'gridSpan', val=str(columns))
+    borders = _node(cpr, 'tcBorders')
+    for side in ('top', 'left', 'bottom', 'right', 'start', 'end'):
+        _set(borders, side, val='nil')
+    margins = _node(cpr, 'tcMar')
+    for side in ('top', 'left', 'right', 'bottom'):
+        _set(margins, side, w='0', type='dxa')
+    position = list(body).index(caption)
+    body.remove(caption); cell.append(caption)
+    table.insert(list(table).index(table.find(W + 'tr')), row)
+    # Adjacent equal tables can be auto-merged by Word. A tiny, empty separator
+    # retains their independent editable structures without creating a blank page.
+    separator = ET.Element(W + 'p')
+    pr = _node(separator, 'pPr')
+    _set(pr, 'keepNext', val='1'); _set(pr, 'pageBreakBefore', val='0')
+    _set(pr, 'spacing', before='0', after='0', line='20', lineRule='exact')
+    _set(_node(pr, 'rPr'), 'sz', val='2')
+    body.insert(position, separator)
+    for p in between:
+        _set(_node(p, 'pPr'), 'spacing', before='0', after='0', line='20', lineRule='exact')
+    return True
+
+
 def _fit_picture(picture: Any, max_width: int, max_height: int) -> bool:
     graphic = picture.find(A + 'graphic')
     extent = picture.find(WP + 'extent')
@@ -367,6 +504,7 @@ def normalize_elements(document: Any, table_pt: int, table_header_pt: int = 11) 
     tables = 0
     warnings: list[str] = []
     blocks = list(body)
+    previous_parts: dict[str, Any] = {}
     for index, table in enumerate(blocks):
         if table.tag != W + 'tbl':
             continue
@@ -382,5 +520,13 @@ def normalize_elements(document: Any, table_pt: int, table_header_pt: int = 11) 
             warnings.append(_text(caption)[:60] + ': ' + warning)
         if warning is None or warning.startswith('Головка'):
             tables += 1
+            match = TABLE.match(_text(caption))
+            assert match is not None
+            number = match.group(1).upper()
+            if (_text(caption).lower().startswith('продолжение') and number in previous_parts
+                    and not _flow_continuation(body, previous_parts[number], caption, table)):
+                warnings.append(_text(caption)[:60] + ': автоматический поток частей не применён; проверьте границу.')
+            previous_parts[number] = table
     figures, figure_warnings = _figures(body, table_pt)
+    normalize_page_starts(document)
     return ElementReport(tables, figures, tuple(warnings + figure_warnings + _references(body)))

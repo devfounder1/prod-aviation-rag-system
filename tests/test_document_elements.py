@@ -9,11 +9,12 @@ from zipfile import ZipFile
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.table import WD_ROW_HEIGHT_RULE
+from docx.enum.text import WD_BREAK
 from lxml import etree as ET
 from PIL import Image
 import pytest
 
-from document_elements import normalize_elements
+from document_elements import normalize_elements, normalize_page_starts
 from gost_formatter import format_docx
 from standard_profiles import load_profile
 
@@ -162,18 +163,76 @@ def test_continuation_and_notes_stay_with_records_and_reference_ranges_are_recog
     table.cell(0, 0).text = 'Наименование'; table.cell(0, 1).text = 'Значение'
     table.cell(1, 0).text = 'Ток'; table.cell(1, 1).text = '27,5'
     table.cell(2, 0).merge(table.cell(2, 1)).text = 'Примечание — значения сохранены.'
-    doc.add_paragraph('Продолжение таблицы 1')
+    doc.add_page_break()
+    caption = doc.add_paragraph('Продолжение таблицы 1')
+    caption._p.insert(1, ET.fromstring('<w:r xmlns:w="'+W[1:-1]+'"><w:br w:type="page"/></w:r>'))
     continuation = doc.add_table(rows=2, cols=2)
     continuation.cell(0, 0).text = 'Наименование'; continuation.cell(0, 1).text = 'Значение'
     doc.add_paragraph('Таблица 2')
     unknown = doc.add_table(rows=2, cols=2)
     unknown.cell(0, 0).text = '1'; unknown.cell(0, 1).text = '0,001'
     tree = ET.fromstring(ET.tostring(doc._element))
+    before_text = tree.xpath('.//w:t/text()', namespaces=NS)
     report = normalize_elements(tree, 12)
+    assert tree.xpath('.//w:t/text()', namespaces=NS) == before_text
     rows = tree.find('w:body/w:tbl', NS).findall(W+'tr')
     assert all(node.get(W+'val') == '1' for node in rows[1].xpath('./w:tc/w:p/w:pPr/w:keepNext', namespaces=NS))
-    caption = tree.find('w:body', NS).findall(W+'p')[2]
-    assert caption.find('w:pPr/w:pageBreakBefore', NS).get(W+'val') == '1'
+    continuation_table = tree.find('w:body',NS).findall(W+'tbl')[1]
+    caption_row = continuation_table.findall(W+'tr')[0]
+    assert caption_row.xpath('.//w:t/text()', namespaces=NS) == ['Продолжение таблицы 1']
+    assert caption_row.find('w:trPr/w:tblHeader', NS).get(W+'val') == '1'
+    assert caption_row.find('w:tc/w:p/w:pPr/w:pageBreakBefore', NS).get(W+'val') == '0'
+    assert not tree.xpath('.//w:br[@w:type="page"]', namespaces=NS)
     assert any('Головка таблицы не определена' in warning for warning in report.warnings)
     assert not any('Проверьте ссылку' in warning for warning in report.warnings)
     assert all(node.get(W+'val') == '0' for node in tree.find('w:body',NS).findall(W+'tbl')[2].xpath('./w:tr/w:trPr/w:tblHeader', namespaces=NS))
+
+
+def test_main_flow_clears_heading_keeps_and_old_breaks_without_joining_words(tmp_path: Path) -> None:
+    doc = Document()
+    title = doc.add_paragraph('Title'); title.add_run().add_break(WD_BREAK.PAGE)
+    doc.add_heading('Section', level=1)
+    requirement = doc.add_heading('Requirement before', level=3)
+    requirement.add_run().add_break(WD_BREAK.PAGE); requirement.add_run('after break')
+    doc.add_page_break()
+    doc.add_paragraph('Приложение А')
+    doc.add_page_break()
+    original, output = tmp_path/'a.docx', tmp_path/'b.docx'
+    doc.save(original); format_docx(original, output)
+    changed = Document(output)
+    p = changed.paragraphs[2]
+    assert p.paragraph_format.keep_with_next is False
+    assert p.paragraph_format.keep_together is False
+    tree = ET.fromstring(ET.tostring(changed._element))
+    assert p.text == 'Requirement before\nafter break'
+    assert not tree.find('w:body/w:p[3]', NS).xpath('.//w:br[@w:type="page"]', namespaces=NS)
+    assert tree.xpath('count(.//w:br[@w:type="page"])', namespaces=NS) == 1  # appendix boundary kept
+    assert tree.find('w:body/w:p[5]/w:pPr/w:pageBreakBefore', NS).get(W+'val') == '1'
+    assert tree.xpath('.//w:t/text()', namespaces=NS) == doc._element.xpath('.//w:t/text()')
+
+
+def test_page_break_before_and_leading_manual_breaks_are_coalesced() -> None:
+    root = ET.fromstring(f'''<w:document xmlns:w="{W[1:-1]}"><w:body>
+      <w:p><w:r><w:t>Introduction</w:t><w:br w:type="page"/></w:r></w:p>
+      <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+      <w:p><w:pPr><w:pageBreakBefore/></w:pPr><w:bookmarkStart w:id="1" w:name="s"/>
+      <w:r><w:br w:type="page"/><w:t>Section</w:t></w:r></w:p>
+      <w:sectPr/></w:body></w:document>''')
+    assert normalize_page_starts(root) == 3
+    assert not root.xpath('.//w:br', namespaces=NS)
+    assert root.find('w:body/w:p[3]/w:pPr/w:pageBreakBefore', NS) is not None
+    assert root.find('.//w:bookmarkStart', NS) is not None
+
+
+def test_continuation_does_not_cross_unrelated_prose_or_section_boundary() -> None:
+    doc = Document(); doc.add_paragraph('Таблица 1')
+    a = doc.add_table(rows=2, cols=2)
+    a.cell(0,0).text='Наименование'; a.cell(0,1).text='Значение'
+    doc.add_paragraph('Unrelated prose must keep its position.')
+    doc.add_paragraph('Продолжение таблицы 1')
+    b = doc.add_table(rows=2, cols=2)
+    b.cell(0,0).text='Наименование'; b.cell(0,1).text='Значение'
+    root = ET.fromstring(ET.tostring(doc._element))
+    report = normalize_elements(root,12)
+    assert any('автоматический поток частей не применён' in warning for warning in report.warnings)
+    assert root.find('w:body',NS).findall(W+'tbl')[1].findall(W+'tr')[0].xpath('.//w:t/text()',namespaces=NS) == ['Наименование','Значение']

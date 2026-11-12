@@ -133,5 +133,5 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
 def runtime_files() -> tuple[str, ...]:
     """Code and selected evidence covered by the host/image freshness check."""
     return ('document_inspection.py', 'gost_formatter.py', 'document_layout.py',
-            'document_elements.py', 'standard_profiles.py', 'worker.py',
+            'document_elements.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
             *(f'standards/{name}' for name in load_profile().selected_files))

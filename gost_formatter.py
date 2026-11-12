@@ -16,8 +16,9 @@ from typing import Any
 from lxml import etree as ET  # type: ignore[import-untyped]
 
 from document_inspection import inspect_docx
-from document_elements import normalize_elements
+from document_elements import normalize_elements, normalize_main_flow
 from standard_profiles import load_profile
+from metafile_layout import repair_figure_fonts
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS = {'w': W[1:-1]}
@@ -118,6 +119,13 @@ def format_docx(source: Path, target: Path) -> FormatReport:
             elif role in {'normal', 'bodytext', 'heading3', 'heading4', 'заголовок3', 'заголовок4'}:
                 body_count += 1
                 _prop(ppr, 'spacing', line=str(round(profile.body_line * 240)), lineRule='auto')
+                if role in {'heading3', 'heading4', 'заголовок3', 'заголовок4'}:
+                    # In imported technical documents these styles describe
+                    # numbered requirements. Inherited heading keeps otherwise
+                    # chain ordinary paragraphs into unbreakable page blocks.
+                    _prop(ppr, 'keepNext', val='0')
+                    _prop(ppr, 'keepLines', val='0')
+                    _prop(ppr, 'widowControl', val='1')
                 # Existing numbering/tab geometry stays intact. Only prose
                 # paragraphs with a known role receive a uniform first-line indent.
                 if role in {'normal', 'bodytext'} and ppr.find(W + 'numPr') is None:
@@ -135,6 +143,7 @@ def format_docx(source: Path, target: Path) -> FormatReport:
                      'outlineLvl', 'divId', 'cnfStyle', 'rPr', 'sectPr', 'pPrChange')
             rank = {W + tag: n for n, tag in enumerate(order)}
             ppr[:] = sorted(ppr, key=lambda child: rank.get(child.tag, len(order)))
+        normalize_main_flow(document, roles)
         # Continuous sections inherit the normal page furniture. A separate first
         # page here can repeat the first numbered sheet's literal stamp/page.
         for section in document.findall('.//w:sectPr', NS):
@@ -145,9 +154,10 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         if not headings:
             raise ValueError('Не найдены размеченные разделы. Нужна проверка структуры; автоматическое угадывание отключено.')
         elements = normalize_elements(document, profile.table_pt, profile.table_header_pt)
+        font_updates, repaired_fonts, font_warnings = repair_figure_fonts(document, package)
         if _texts(document) != before:
             raise ValueError('Нарушена сохранность текста; результат не публикуется')
-        updates = {'word/document.xml': ET.tostring(document, xml_declaration=True, encoding='UTF-8', standalone=True)}
+        updates = {**font_updates, 'word/document.xml': ET.tostring(document, xml_declaration=True, encoding='UTF-8', standalone=True)}
         from document_layout import normalize_stamps
         rotated = dates = page_fields = 0
         for name in package.namelist():
@@ -164,6 +174,9 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         with ZipFile(target, 'w') as result:
             for entry in package.infolist():
                 result.writestr(copy.copy(entry), updates.get(entry.filename, package.read(entry.filename)))
+            for name, data in updates.items():
+                if name not in package.namelist():
+                    result.writestr(name, data)
         with ZipFile(target) as result:
             for entry in package.infolist():
                 if entry.filename not in updates and package.read(entry.filename) != result.read(entry.filename):
@@ -184,13 +197,18 @@ def format_docx(source: Path, target: Path) -> FormatReport:
     if evidence.external_relationships:
         warnings.append('Внешние ссылки сохранены без загрузки и обновления.')
     warnings.extend(elements.warnings)
+    warnings.extend(font_warnings)
+    if repaired_fonts:
+        warnings.append('В копии для показа схем шрифт GOST заменён на локальный Liberation Sans. '
+                        'Исходные изображения и встроенные объекты сохранены отдельно без изменения; проверьте подписи.')
     return FormatReport(profile.title, (
         f'Оформлены заголовки разделов и подразделов: {headings}.',
         f'Межстрочный интервал {profile.body_line:g} применён к основному тексту: {body_count} абзацев.',
         f'Для обычных абзацев применён отступ {profile.indent_mm:g} мм; нумерация и специальные блоки сохранены.',
         f'Оформлены таблицы с подписями: {elements.tables}. Сохранены значения и объединения ячеек; настроены шапки и переносы.',
         f'Размещены существующие рисунки: {elements.figures}. Масштаб пропорциональный; подписи и пояснения связаны с изображением.',
+        f'Подготовлены копии старых схем с исправленным отображением шрифта: {repaired_fonts}. Исходники сохранены.',
         ('Исправлено отображение вертикальных подписей, дат и номеров в штампах; число листов связано с документом.'
          if rotated or dates or page_fields else 'Штампы сохранены; их оформление проверяется на страницах предпросмотра.'),
         'Текст, таблицы документа, изображения и вложенные объекты проверены на сохранность.',
-    ), tuple(warnings), len(evidence.parts) - len(updates), True)
+    ), tuple(warnings), len(evidence.parts) - len(set(updates) & {part.name for part in evidence.parts}), True)
