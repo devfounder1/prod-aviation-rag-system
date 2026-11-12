@@ -42,6 +42,7 @@
 - Start Ollama if not already running: `ollama serve`; inspect installed models with `ollama list`. Do not pull models automatically.
 
 ## Release checks
+- The active delivery branch is **`release`**, exactly without a `codex/` prefix (explicit user preference). Do not recreate `codex/production-hardening`. Commit completed, reviewed stages and push them to `origin/release`; inspect staged paths and exclude private runtime data and unrelated user changes.
 - Run `uv run python doctor.py` for read-only local readiness checks.
 - Run `uv run python evaluate_rag.py` for deterministic retrieval CI and add `--live` only for local-model quality checks. Fixtures must be synthetic or explicitly cleared for publication.
 - Keep runtime data out of Git; never use `git add .` without reviewing the staged paths.
