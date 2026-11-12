@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "profile_id": "eskd-text-v1",
+  "title": "ГОСТ Р 2.105-2019 / ГОСТ Р 2.104-2023 · текст, таблицы и рисунки",
+  "document_kind": "existing_textual_design_document",
+  "sources": [
+    {
+      "file": "gost_r_2_105_2019.json",
+      "profile_id": "gost-r-2.105-2019-user-copy-2024",
+      "sha256": "c3bb3ae4a47c190004bc48225dc8bce53e9579e8b05379a1429d749e28d250ad",
+      "rule_ids": ["heading-format", "heading-clearance", "section-page-break", "body-line-spacing", "paragraph-indent", "secondary-font-size", "table-caption-position", "table-header-continuation", "table-numbering", "figure-caption-position", "figure-numbering"]
+    },
+    {
+      "file": "gost_r_2_104_2023.json",
+      "profile_id": "gost-r-2.104-2023-user-copy-2024",
+      "sha256": "2fdb4e0c5dac26f5824dbdb8aafd0f20cacc1a0490222e3ee6d016c0b9df2094",
+      "rule_ids": ["textual-forms", "additional-organization-fields"]
+    }
+  ],
+  "project_choices": {
+    "heading_pt": 16,
+    "subheading_pt": 14,
+    "heading_gap_pt": 28,
+    "body_line": 1.5,
+    "indent_mm": 12.5,
+    "table_pt": 12,
+    "table_header_pt": 10
+  },
+  "notes": [
+    "Численные настройки — выбранный вариант оформления проекта, а не утверждение об обязательных значениях во всех ГОСТах.",
+    "Применимость профиля подтверждается просмотром документа. Неизвестные формы, конфликтующие требования и перерисовка схем автоматически не разрешаются.",
+    "Профиль загружает только явно перечисленные реестры. Добавление PDF в каталог само по себе не создаёт исполняемых правил."
+  ]
+}

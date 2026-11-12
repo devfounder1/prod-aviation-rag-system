@@ -1,0 +1,14 @@
+**
+!document_inspection.py
+!gost_formatter.py
+!document_layout.py
+!document_elements.py
+!standard_profiles.py
+!standards/
+!standards/gost_r_2_105_2019.json
+!standards/gost_r_2_104_2023.json
+!standards/profiles/
+!standards/profiles/eskd_text.json
+!document_runtime/
+!document_runtime/Dockerfile
+!document_runtime/worker.py

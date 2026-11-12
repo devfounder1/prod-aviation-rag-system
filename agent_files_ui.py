@@ -77,12 +77,15 @@ class FileApproval:
             await self.close()
 
     def wait(self, description: str, timeout: float = 120) -> bool:
-        self.job.token.on_cancel(lambda: self.decide(False))
-        if not self.ui.run_task(self.show, description):
-            self.decide(False)
-        if not self.done.wait(timeout):
-            self.decide(False)
-        return self.approved and not self.job.token.get('cancelled') and self.is_current()
+        remove = self.job.token.on_cancel(lambda: self.decide(False))
+        try:
+            if not self.ui.run_task(self.show, description):
+                self.decide(False)
+            if not self.done.wait(timeout):
+                self.decide(False)
+            return self.approved and not self.job.token.get('cancelled') and self.is_current()
+        finally:
+            remove()
 
 
 def reveal_path(path: Path) -> None:

@@ -94,6 +94,8 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
         return path
 
     def text(path: Path) -> str:
+        if path.suffix.lower() == '.doc':
+            raise ValueError('Бинарный DOC не читается как текст. Для оформления прикрепите его и нажмите «Оформить по ГОСТ».')
         if path.suffix.lower() in {'.docx', '.pdf', '.xlsx', '.csv'}:
             from document_processor import parse_file
             return parse_file(path)

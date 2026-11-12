@@ -230,6 +230,8 @@ class AviationRAGApp:
         if hasattr(self, "send_button"):
             self.send_button.disabled = self.is_processing
             self.stop_button.visible = self.is_processing
+        if hasattr(self, "gost_button"):
+            self.gost_button.disabled = self.is_processing
         if not getattr(self, "_has_streamed_text", True) and hasattr(self, "_progress_text"):
             self._progress_text.value = event.detail or self.activity.text.value
             self._progress_ring.visible = self.activity.spinner.visible
@@ -397,6 +399,11 @@ class AviationRAGApp:
             on_click=self.agent_files.open,
             tooltip="Результаты агента: открыть папку или сохранить файл в удобное место",
         )
+        self.gost_button = ft.TextButton(
+            content=ft.Row([brand_icon("files", 20), ft.Text("Оформить по ГОСТ", size=13)], tight=True, spacing=7),
+            on_click=self._handle_gost_click,
+            tooltip="Прикрепите один DOC или DOCX: оформление, просмотр страниц и сохранение новой копии",
+        )
 
         self.send_button = icon_button("send", "Отправить сообщение", self._handle_send, primary=True)
         self.stop_button = icon_button("stop", "Остановить ответ", self._handle_cancel_click)
@@ -405,7 +412,7 @@ class AviationRAGApp:
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
-                ft.Row([self.agent_toggle, self.files_button], spacing=16, wrap=True),
+                ft.Row([self.agent_toggle, self.files_button, self.gost_button], spacing=16, wrap=True),
                 ft.Row([
                     self.mic_button,
                     icon_button("attach", "Прикрепить документ или изображение", self._handle_attach_click),
@@ -530,6 +537,16 @@ class AviationRAGApp:
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
+    def _handle_gost_click(self, e: Any) -> None:
+        if self.is_processing:
+            return
+        documents = [item for item in getattr(self, '_pending_attachments', [])
+                     if Path(item['path']).suffix.lower() in {'.doc', '.docx'}]
+        if len(documents) != 1:
+            self._show_toast('Прикрепите один исходный DOC или DOCX. PDF пока не поддерживается оформлением.')
+            return
+        self._handle_send(e, document_name=documents[0]['name'])
+
     def _queue_job_ui(self, job: RequestJob, action: Callable[..., Any], *args: Any) -> None:
         if not self._jobs.is_current(job) or not self._ui_dispatch.active:
             return
@@ -583,9 +600,28 @@ class AviationRAGApp:
 
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
-                 history: list[dict[str, Any]]) -> None:
+                 history: list[dict[str, Any]], document_name: str | None = None) -> None:
         try:
             if not self._ui_dispatch.active or not self._jobs.is_current(job):
+                return
+            if document_name is not None:
+                from document_approval_ui import DocumentApproval
+                from document_jobs import create_document
+                source = next(item for item in attachments if item['name'] == document_name)
+                self._queue_job_ui(job, self._add_streaming_placeholder)
+
+                def approve_document(proposal: Any) -> bool:
+                    return DocumentApproval(
+                        self.page, job,
+                        lambda: self._jobs.is_current(job) and self.chat_manager.current_chat_id == job.chat_id,
+                        proposal, ui=self._ui_dispatch,
+                    ).wait('Оформление документа', timeout=600)
+
+                outcome = create_document(
+                    job.chat_id, source, approve_document, job.token,
+                    lambda event: self._queue_activity(job, event))
+                if not job.token.get('cancelled'):
+                    self._queue_job_ui(job, self._complete_job, job, outcome.render(), [])
                 return
             rag = self.rag_system
             if rag is None or rag.model_name != model_name:
@@ -629,7 +665,7 @@ class AviationRAGApp:
                          getattr(exc.__cause__ or exc, "status_code", "unknown"))
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._fail_job, job, f"Ошибка: {exc}",
-                                   attachments if isinstance(exc, VisionAnalysisError) else [])
+                                   attachments if isinstance(exc, VisionAnalysisError) or document_name is not None else [])
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""
@@ -769,6 +805,12 @@ class AviationRAGApp:
             border_color=self.theme["border"],
         )
         list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=2)
+
+        def select_document(path: Path) -> None:
+            # Page.open owns dialogs separately from page.overlay in Flet 0.28.
+            # Close the exact picker captured by this callback, not a global search.
+            self.page.close(browser_dlg)
+            self._select_file(str(path), path.name)
         
         def refresh(*_):
             p = Path(path_field.value).expanduser()
@@ -801,7 +843,7 @@ class AviationRAGApp:
             
             # Потом файлы
             CODE_EXTS = ['.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', '.json', '.xml', '.ini', '.cfg']
-            allowed_exts = ['.pdf', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'] + CODE_EXTS
+            allowed_exts = ['.pdf', '.doc', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'] + CODE_EXTS
             files_found = 0
             
             for item in items:
@@ -819,7 +861,7 @@ class AviationRAGApp:
                                 padding=ft.padding.symmetric(horizontal=8, vertical=6),
                                 border_radius=6,
                                 ink=True,
-                                on_click=lambda e, ff=item: self._select_file(str(ff), ff.name),
+                                on_click=lambda e, ff=item: select_document(ff),
                             )
                         )
             
@@ -878,14 +920,6 @@ class AviationRAGApp:
     def _select_file(self, file_path: str, file_name: str):
         """Обработчик выбора файла в браузере"""
         print(f"[DEBUG] Выбран файл: {file_name}", flush=True)
-        
-        # Закрываем браузер
-        # browser_dlg доступен из замыкания, но нам нужно его закрыть
-        # Для этого найдём его в overlay страницы
-        for overlay in self.page.overlay:
-            if isinstance(overlay, ft.AlertDialog) and overlay.title and "Выбор файла" in (overlay.title.value if hasattr(overlay.title, 'value') else ""):
-                self.page.close(overlay)
-                break
         
         # Добавляем файл в pending_attachments
         if not hasattr(self, '_pending_attachments'):
@@ -1212,8 +1246,9 @@ class AviationRAGApp:
         self.page.update()
         self.messages_column.scroll_to(offset=-1, duration=300)
 
-    def _handle_send(self, e):
-        text = self.input_field.value.strip()
+    def _handle_send(self, e, document_name: str | None = None):
+        text = (f'Оформить документ «{document_name}» по ГОСТ Р 2.105-2019 / Р 2.104-2023'
+                if document_name is not None else self.input_field.value.strip())
         if not text or self.is_processing:
             if self.is_processing:
                 self._show_toast("⏳ Подождите завершения текущего ответа!", color="#f59e0b")
@@ -1222,7 +1257,8 @@ class AviationRAGApp:
         # Получаем прикреплённые файлы
         pending_attachments = getattr(self, '_pending_attachments', [])
         
-        self.input_field.value = ""
+        if document_name is None:
+            self.input_field.value = ""
         self._pending_attachments = []  # Очищаем список прикреплённых файлов
         self._update_pending_attachments_display()
         
@@ -1249,7 +1285,7 @@ class AviationRAGApp:
         history = (self.chat_manager.get_current_chat() or {}).get("messages", [])[:-1][-8:]
         threading.Thread(
             target=self._process,
-            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history),
+            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history, document_name),
             daemon=True
         ).start()
 

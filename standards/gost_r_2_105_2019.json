@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "profile_id": "gost-r-2.105-2019-user-copy-2024",
+  "status": "requirements_draft_not_executable",
+  "source": {
+    "designation": "ГОСТ Р 2.105-2019",
+    "title": "Общие требования к текстовым документам",
+    "edition_as_printed": "С Изменениями № 1, 2 и Поправкой; июнь 2024 г.",
+    "sha256": "c3bb3ae4a47c190004bc48225dc8bce53e9579e8b05379a1429d749e28d250ad",
+    "pdf_pages": 42,
+    "page_reference": "One-based PDF pages in the exact source identified by sha256",
+    "current_legal_status_checked": false,
+    "review_method": "Text review of cited clauses; visual review of figures A.1, A.2 and Б.1 on PDF pages 36–38"
+  },
+  "scope": {
+    "document_kind": "predominantly_continuous_text",
+    "production_method": "computer_generated",
+    "requires_document_kind_confirmation": true,
+    "excluded_from_this_profile": ["Раздел 7: документы с текстом, разбитым на графы", "Раздел 9: двустороннее копирование"],
+    "not_a_compliance_certificate": true
+  },
+  "rules": [
+    {
+      "id": "body-font-size", "clauses": ["5.1.1"], "pdf_pages": [6],
+      "modality": "recommendation", "check": "docx_properties_and_render",
+      "requirement": "Для автоматизированного оформления рекомендуется основной текст 11–14 пт.",
+      "parameters": {"min_pt": 11, "max_pt": 14},
+      "exceptions": "Шрифт должен учитывать лицензию и однозначность символов. Обязательная гарнитура Times New Roman этим пунктом не задана."
+    },
+    {
+      "id": "secondary-font-size", "clauses": ["5.1.1"], "pdf_pages": [6],
+      "modality": "recommendation", "check": "docx_properties_and_render",
+      "requirement": "Для приложений, примечаний, таблиц, сносок и примеров рекомендуется размер на 1–2 пт меньше основного.",
+      "parameters": {"reduction_min_pt": 1, "reduction_max_pt": 2}
+    },
+    {
+      "id": "body-line-spacing", "clauses": ["5.1.2"], "pdf_pages": [6],
+      "modality": "recommendation_with_alternatives", "check": "docx_properties_and_render",
+      "requirement": "Рекомендуется полуторный интервал; разрешены перечисленные альтернативы.",
+      "parameters": {"recommended": 1.5, "alternatives": [1, 1.15, 1.25, 1.75, 2]},
+      "exceptions": "Для изделий по заказу Минобороны России выбор альтернативы требует согласования с заказчиком (ПЗ)."
+    },
+    {
+      "id": "frame-clearance", "clauses": ["5.1.3"], "pdf_pages": [6],
+      "modality": "requirement", "check": "render_geometry",
+      "requirement": "Зазоры измеряются от рамки формы до текста, а не от края листа.",
+      "parameters": {"horizontal_min_mm": 3, "vertical_min_mm": 10},
+      "dependencies": ["Утверждённая геометрия рамки и основной надписи"]
+    },
+    {
+      "id": "paragraph-indent", "clauses": ["5.1.4"], "pdf_pages": [6],
+      "modality": "requirement", "check": "docx_properties_and_render",
+      "requirement": "Абзацный отступ соответствует пяти знакам используемой гарнитуры в диапазоне 12,5–17 мм и одинаков по тексту.",
+      "parameters": {"min_mm": 12.5, "max_mm": 17, "font_characters": 5}
+    },
+    {
+      "id": "prose-required-elements", "clauses": ["6.1.1", "6.1.2", "5.1.7"], "pdf_pages": [6, 8],
+      "modality": "requirement_with_scope", "check": "structure_and_manual_review",
+      "requirement": "Для документов преимущественно со сплошным текстом указаны обязательные титульный лист и основное тематическое содержание.",
+      "exceptions": "Особенности и обязательность титульных листов уточняются стандартами на конкретный вид документа; дополнительные элементы выбирает разработчик. Не создавать отсутствующие реквизиты или содержание по догадке."
+    },
+    {
+      "id": "contents-title", "clauses": ["6.2.5"], "pdf_pages": [9],
+      "modality": "conditional_requirement", "check": "docx_properties_and_render",
+      "requirement": "При наличии содержания оно начинается с новой страницы после предисловия; его заголовок располагается сверху по центру и выделяется полужирным."
+    },
+    {
+      "id": "appendix-opening", "clauses": ["6.3.4", "6.3.5"], "pdf_pages": [10],
+      "modality": "conditional_requirement", "check": "structure_and_render",
+      "requirement": "Каждое приложение начинают с новой страницы; по центру указывают его обозначение, статус и отдельный заголовок. Одно приложение обозначают А.",
+      "parameters": {"russian_letters_excluded": ["Ё", "З", "Й", "О", "Ч", "Ь", "Ы", "Ъ"], "latin_letters_excluded": ["I", "O"]},
+      "exceptions": "Правила не применяются к самостоятельным документам по 6.3.1 в); разрешён латинский алфавит, затем цифры при исчерпании обоих алфавитов."
+    },
+    {
+      "id": "section-numbers", "clauses": ["6.5.4"], "pdf_pages": [12],
+      "modality": "conditional_requirement", "check": "structure_and_docx_properties",
+      "requirement": "Разделы нумеруют арабскими цифрами; подразделы — внутри раздела с точкой между уровнями. После номера завершающую точку не ставят; номера записывают с абзацного отступа."
+    },
+    {
+      "id": "heading-format", "clauses": ["6.6.1", "6.6.2"], "pdf_pages": [13],
+      "modality": "requirement_with_alternatives", "check": "docx_properties_and_render",
+      "requirement": "Заголовки разделов и подразделов начинают с прописной буквы, без завершающей точки, подчёркивания и переноса слов. Для разделов используют полужирный увеличенный шрифт.",
+      "exceptions": "Заголовки подразделов допускается не выделять полужирным. Увеличение их размера необязательно; при увеличении размер меньше размера заголовка раздела. Эти правила не переносятся на раздел 7."
+    },
+    {
+      "id": "heading-clearance", "clauses": ["6.6.3"], "pdf_pages": [13],
+      "modality": "requirement", "check": "render_geometry",
+      "requirement": "Расстояния заголовка раздела или подраздела до соседнего текста и между такими заголовками — не менее двух высот шрифта основного текста.",
+      "parameters": {"min_body_font_heights": 2},
+      "exceptions": "Нужна проверка фактических расстояний после рендеринга; сумма Word space_before/space_after сама по себе не доказывает соблюдение."
+    },
+    {
+      "id": "section-page-break", "clauses": ["6.6.5"], "pdf_pages": [13],
+      "modality": "recommendation", "check": "docx_properties_and_render",
+      "requirement": "Каждый раздел рекомендуется начинать с новой страницы."
+    },
+    {
+      "id": "list-punctuation", "clauses": ["6.7.1"], "pdf_pages": [13, 14],
+      "modality": "conditional_requirement", "check": "structure_and_manual_review",
+      "requirement": "Перед списком требуется общая вводная формулировка с двоеточием; список содержит не менее двух элементов. Элементы обычно начинают со строчной буквы и разделяют точкой с запятой; последний завершают точкой.",
+      "exceptions": "Учитывать обязательную прописную букву первого слова и правила для многофразовых элементов; не менять смысл текста автоматически."
+    },
+    {
+      "id": "table-header-continuation", "clauses": ["6.8.5", "6.8.7"], "pdf_pages": [16],
+      "modality": "conditional_requirement_with_alternatives", "check": "structure_and_render",
+      "requirement": "При делении таблицы на части повторяют её головку и боковик; допускается заменить их номерами граф и строк. Головку выделяют одним из перечисленных способов, в том числе полужирным шрифтом.",
+      "exceptions": "Допускается не выделять головку специально при отсутствии горизонтальных линий между строками. Надпись Продолжение таблицы при программной подготовке допускается не указывать. Не выводить головку по догадке из строк данных."
+    },
+    {
+      "id": "table-caption-position", "clauses": ["6.8.1"], "pdf_pages": [15],
+      "modality": "conditional_requirement", "check": "structure_and_render",
+      "requirement": "Наименование таблицы, если оно есть, размещают над таблицей; при разделении — только над первой частью."
+    },
+    {
+      "id": "table-numbering", "clauses": ["6.8.2", "6.8.3"], "pdf_pages": [15, 16],
+      "modality": "requirement_with_alternatives", "check": "structure_and_manual_review",
+      "requirement": "Таблицы нумеруют арабскими цифрами и ссылаются на них в тексте; приложения имеют отдельную нумерацию с обозначением приложения.",
+      "exceptions": "Допускается нумерация в пределах раздела. Единственную таблицу также нумеруют."
+    },
+    {
+      "id": "figure-numbering", "clauses": ["6.9.3"], "pdf_pages": [24, 25],
+      "modality": "requirement_with_alternatives", "check": "structure_and_manual_review",
+      "requirement": "Рисунки нумеруют арабскими цифрами; у приложений отдельная нумерация. На нумерованные рисунки нужны ссылки в тексте.",
+      "exceptions": "Допускается нумерация внутри раздела; небольшие рисунки в тексте без дальнейших ссылок можно не нумеровать."
+    },
+    {
+      "id": "figure-caption-position", "clauses": ["6.9.4"], "pdf_pages": [25],
+      "modality": "conditional_requirement", "check": "structure_and_render",
+      "requirement": "Обозначение рисунка и его наименование через тире располагают после пояснительных данных."
+    },
+    {
+      "id": "formula-explanations", "clauses": ["6.10.1"], "pdf_pages": [26],
+      "modality": "conditional_requirement", "check": "structure_and_manual_review",
+      "requirement": "Не пояснённые ранее символы и коэффициенты объясняют непосредственно под формулой в порядке следования; первая строка начинается словом где без двоеточия."
+    },
+    {
+      "id": "formula-numbering", "clauses": ["6.10.4"], "pdf_pages": [26],
+      "modality": "requirement_with_alternatives", "check": "structure_and_render",
+      "requirement": "Номер формулы располагают справа на её уровне в круглых скобках; приложения имеют отдельную нумерацию с обозначением приложения.",
+      "exceptions": "Допускается нумерация внутри раздела. Единственную формулу также нумеруют."
+    },
+    {
+      "id": "title-page-form", "clauses": ["8.9"], "pdf_pages": [32, 33, 34],
+      "modality": "conditional_requirement", "check": "template_geometry_and_manual_review",
+      "requirement": "Титульный лист и лист утверждения выполняют на А4 по схеме рисунка 23 с заполнением применимых полей.",
+      "dependencies": ["ГОСТ 2.301", "ГОСТ Р 2.104", "ГОСТ Р 7.0.97", "Реквизиты организации и документа"],
+      "exceptions": "Размер шрифта и интервал полей 1–8 определяет разработчик; подписи и утверждение не создавать автоматически."
+    }
+  ],
+  "reference_examples": [
+    {"figure": "А.1", "pdf_pages": [36], "status": "informative", "role": "Первый нумеруемый лист; основная надпись по ГОСТ Р 2.104, форма 2"},
+    {"figure": "А.2", "pdf_pages": [37], "status": "informative", "role": "Последующие листы; основная надпись по ГОСТ Р 2.104, форма 2а"},
+    {"figure": "Б.1", "pdf_pages": [38], "status": "informative", "role": "Пример титульного листа; не источник точных размеров по пикселям"}
+  ],
+  "unresolved": [
+    "Исходный пример получен в бинарном DOC; его импорт и сохранность объектов требуют отдельной проверки, а каждый новый документ — определения вида и структуры.",
+    "ГОСТ Р 2.104-2023 получен; начальные правила находятся в gost_r_2_104_2023.json. Точная геометрия конкретного шаблона и все применимые графы ещё требуют проверки.",
+    "Нужен выбор доступной лицензированной гарнитуры, параметров профиля и реквизитов документа.",
+    "Общие правила полей от края листа не следует подменять зазорами от рамки.",
+    "Весь стандарт не оцифрован: в реестре только перечисленные проверенные пункты; остальные требуют отдельного разбора.",
+    "Импорт структуры PDF, создание DOCX, проверка сохранности содержания и проверка рендеринга ещё не реализованы этим профилем."
+  ]
+}
