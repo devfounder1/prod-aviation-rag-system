@@ -255,3 +255,12 @@ contained 284/248 words and retained both source labels, versus the earlier shor
 paragraph. These lengths demonstrate fuller explanations, not guaranteed factual
 accuracy; manual comparison remains necessary. Private histories, documentation,
 model answers and QA files remain ignored under eval-results and out of Git.
+
+### 2026-11-13 — Restore the chat sidebar at startup
+
+ChatManager already restored the saved conversations and selected the newest;
+the desktop constructor omitted the initial sidebar refresh. Populate it as soon
+as the controls are mounted, without creating a chat or changing stored history.
+Validation: 17 startup, chat-store and activity/UI tests passed. The regression
+test reopens a temporary SQLite database with two conversations and checks both
+sidebar entries and the latest messages before any user action.

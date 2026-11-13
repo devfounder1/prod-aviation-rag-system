@@ -106,6 +106,8 @@ class AviationRAGApp:
         
         self._setup_page()
         self._build_ui()
+        # Storage is already loaded; populate the sidebar on the first display.
+        self._update_chat_list()
         # АВТОМАТИЧЕСКИЙ ЗАПУСК wake-listener «Бутуз»
         try:
             from voice_input import WakeWordListener
