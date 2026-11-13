@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     llm_api_key: str = "ollama"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2048
+    document_answer_max_tokens: int = Field(default=4096, ge=256, le=8192)
     vision_model_name: str = "qwen2.5vl:7b"
     vision_max_tokens: int = Field(default=512, ge=64, le=2048)
     

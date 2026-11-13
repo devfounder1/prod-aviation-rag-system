@@ -111,10 +111,10 @@ def test_agent_receives_observations_and_can_keep_using_text_model(picture: Path
     rag.vision.analyze = MagicMock(return_value='[Изображение: icon.png]\nКрасный круг')
     rag.code_agent = LocalAgent(model)
     rag._agent_tools = MagicMock(return_value=[])
-    answer, sources = rag.query_stream('Save description to file', agent_mode=True, attachments=[{'path': str(picture)}])
+    answer, sources = rag.query_stream('Describe the picture', agent_mode=True, attachments=[{'path': str(picture)}])
     assert answer == 'Summary created' and sources == [picture.name]
     messages = model.bind_tools.return_value.invoke.call_args.args[0]
-    assert messages[-2].content == 'Save description to file'
+    assert messages[-2].content == 'Describe the picture'
     assert any('Красный круг' in str(m.content) for m in messages)
     assert 'image_url' not in str(messages)
 

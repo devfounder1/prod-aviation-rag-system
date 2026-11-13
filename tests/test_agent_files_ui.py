@@ -11,6 +11,8 @@ import pytest
 import file_tools
 from agent_files_ui import AgentFilesUI, FileApproval, export_copy
 from jobs import RequestJob
+from ai_agent import LocalAgent
+from langchain_core.messages import AIMessage
 
 
 
@@ -47,6 +49,37 @@ def test_modal_decision_resumes_worker_and_controls_write(
         assert 'rejected' in result
     asyncio.run_coroutine_threadsafe(asyncio.sleep(0), page_loop).result(timeout=3)
     page.close.assert_called_with(dialog)
+
+
+def test_agent_prose_repair_uses_modal_and_publishes_into_file_panel(
+    tmp_path: Path,monkeypatch: pytest.MonkeyPatch,page_loop: asyncio.AbstractEventLoop,
+) -> None:
+    monkeypatch.setattr(file_tools,'WORKSPACE',tmp_path/'chats')
+    page=MagicMock(loop=page_loop);job=RequestJob('a');previews=[]
+    def open_dialog(dialog: Any) -> None:
+        if isinstance(dialog.title,str):
+            return
+        if getattr(dialog.title,'controls',None):
+            previews.append(dialog.content.content.controls[1].content.controls[0].value)
+            dialog.actions[1].on_click(None)
+    page.open.side_effect=open_dialog
+    def approve(description: str) -> bool:
+        return FileApproval(page,job,lambda:True).wait(description)
+    model=MagicMock();model.bind_tools.return_value.invoke.side_effect=[
+        AIMessage(content='Сейчас сохраню файлы'),
+        AIMessage(content='',tool_calls=[{'name':'write_file','id':str(i),'args':{'file_path':f'{name}.py','content':'print(1)\n'}}
+                                        for i,name in enumerate(['bubble','quick'])]),
+        AIMessage(content='Готово'),
+    ]
+    with ThreadPoolExecutor() as pool:
+        answer=pool.submit(LocalAgent(model).run,'Сохрани код в файлы',
+                           tools=file_tools.create_file_tools('a',approve=approve)).result(timeout=5)
+    assert len(previews)==2 and 'сохранён, запись проверена' in answer
+    ui=AgentFilesUI(page,lambda:'a',MagicMock())
+    asyncio.run_coroutine_threadsafe(ui.show('a'),page_loop).result(timeout=3)
+    dialog=page.open.call_args.args[0]
+    rows=dialog.content.content.controls[2].controls
+    assert {row.controls[1].value for row in rows}=={'bubble.py','quick.py'}
 
 
 def test_cancellation_timeout_and_stale_dialog_cannot_authorize_write(page_loop: asyncio.AbstractEventLoop) -> None:

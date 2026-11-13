@@ -17,7 +17,10 @@ class OllamaChatOpenAI(ChatOpenAI):
                              **kwargs: Any) -> dict[str, Any]:
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
         if "max_completion_tokens" in payload:
-            payload["max_tokens"] = payload.pop("max_completion_tokens")
+            # An explicit per-call budget (router/document answer) wins over
+            # the model's default completion budget; never overwrite it here.
+            default = payload.pop("max_completion_tokens")
+            payload.setdefault("max_tokens", default)
         return payload
 
 

@@ -200,3 +200,58 @@ baseline, including cell values and merge signatures. All nine original media/OL
 payload hashes remain present, plus the already disclosed derived display copy.
 The original DOC hash is unchanged. Private source, final DOCX, renders and audit
 JSON remain ignored under eval-results and are excluded from Git.
+
+## 2026-11-13 — Actual agent file delivery and detailed answers in both routes
+
+The file panel was not hiding saved sorting files: the affected conversation
+contained prose/code promises and no verified write. LocalAgent previously
+accepted a tool-free final response whenever no mutation had been attempted,
+so the receipt guard never ran in precisely this case. Added a current-request
+delivery guard with at most two tool-call repair messages. It never writes code
+parsed from Markdown or bypasses approval. Missing tools/receipts produce an
+explicit unsaved outcome; refusal/cancellation do not trigger another write.
+Questions, prohibitions, quoted examples and appended attachment-copy metadata
+do not enable the guard. Existing mutations still report only verified receipts.
+Recent model history is bounded to 3000 characters, preserving complete newest
+turns where possible and marking a single oversized excerpt; stored history is
+unchanged. The live selected model supported tools but had an allocated 4096-token
+context. This is a context-pressure risk, not proof of the cause of every missed
+tool call; neither Ollama's global settings nor the installed model were changed.
+
+Document questions with the agent switch on now prefetch through the same scoped
+retrieval service and use the same detailed answer policy as SEARCH. Search tool
+results enable the policy for later agent steps too. Added the independently
+configurable DOCUMENT_ANSWER_MAX_TOKENS=4096 budget. Fixed the Ollama adapter so an
+explicit max_tokens override is not overwritten by the default completion limit;
+this also restores the router's intended small budget. Current-turn brevity is
+honored without inheriting older short-answer examples. Broad short explanations
+with substantial evidence get one bounded expansion; substantive answers may
+instead get one compact source/draft review without write tools. Review is by the
+same selected local model, is not an independent fact check, may still leave
+unsupported claims, and can add a generation pass of latency. Review failures
+retain a completed draft, and cancellation still stops the request. Source
+labels and the application identity are retained. README and AGENTS document
+these boundaries; all calls remain local through the existing Ollama endpoint.
+
+Validation: 229 tests passed, four optional runtime tests skipped. Strict mypy
+passed for all 32 checked modules; desktop syntax checks and git diff whitespace
+checks passed. Doctor reported ready with both stores healthy; deterministic RAG
+evaluation passed (source recall@1=1.0). Regression tests force the old prose-only
+failure, verify three saved files/three approvals, repeated-prose failure,
+rejection/cancellation, route parity, brief requests, token-budget precedence,
+bounded history, source review and the one-pass limit. An integrated Flet callback
+test verifies the approval modal and actual rows in the current chat's file panel.
+The vision observation test now requests an explanation instead of expecting a
+fictional saved result with no write tools.
+
+Real qwen2.5:14b verification used a read-only copy of the affected conversation
+context and a separate QA workspace: bubble/quick/merge sort files were created,
+each approved once, each passed syntax parsing, and their receipts matched the
+file panel's listing function. No user chat messages or original documents were
+rewritten and generated Python was not executed on the host. A real retrieval
+query fetched the existing local documentation once; both response routes were
+then compared against that same cached evidence. The final SEARCH/AGENT answers
+contained 284/248 words and retained both source labels, versus the earlier short
+paragraph. These lengths demonstrate fuller explanations, not guaranteed factual
+accuracy; manual comparison remains necessary. Private histories, documentation,
+model answers and QA files remain ignored under eval-results and out of Git.
