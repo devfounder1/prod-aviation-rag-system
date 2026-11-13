@@ -27,6 +27,7 @@ PROPERTY_ORDER = {
     'tblPr': 'tblStyle tblpPr tblOverlap bidiVisual tblStyleRowBandSize tblStyleColBandSize tblW jc tblCellSpacing tblInd tblBorders shd tblLayout tblCellMar tblLook tblCaption tblDescription tblPrChange',
     'trPr': 'cnfStyle divId gridBefore gridAfter wBefore wAfter cantSplit trHeight tblHeader tblCellSpacing jc hidden ins del trPrChange',
     'tcPr': 'cnfStyle tcW gridSpan hMerge vMerge tcBorders shd noWrap tcMar textDirection tcFitText vAlign hideMark headers cellIns cellDel cellMerge tcPrChange',
+    'sectPr': 'headerReference footerReference footnotePr endnotePr type pgSz pgMar paperSrc pgBorders lnNumType pgNumType cols formProt vAlign noEndnote titlePg textDirection bidi rtlGutter docGrid printerSettings sectPrChange',
 }
 
 
@@ -86,11 +87,19 @@ def _paragraph(paragraph: Any, size: int, *, keep: bool, center: bool = False) -
     _set(ppr, 'keepLines', val='1')
     _set(ppr, 'pageBreakBefore', val='0')
     _set(ppr, 'wordWrap', val='1')
-    _set(ppr, 'spacing', before='0', after='60', line='240', lineRule='auto')
+    _set(ppr, 'snapToGrid', val='0')
+    _node(ppr, 'spacing').attrib.clear()
+    _set(ppr, 'spacing', before='0', after='0', line='240', lineRule='auto')
     indent = _node(ppr, 'ind')
     if ppr.find(W + 'numPr') is not None:
         indent.attrib.pop(W + 'firstLine', None)
-        _set(ppr, 'ind', hanging='300', left='360', start='360', right='0', end='0')
+        # Full-width notes can right-align their list label. Reserve room for
+        # "1."/"2." inside the cell instead of across its left border.
+        cell = paragraph.getparent()
+        note = (cell is not None and cell.tag == W+'tc' and cell.getparent() is not None
+                and len(cell.getparent().findall(W+'tc')) == 1
+                and _text(cell).lower().startswith('примечан'))
+        _set(ppr, 'ind', hanging='180' if note else '300', left='360', start='360', right='0', end='0')
         tabs = ppr.find(W + 'tabs')
         if tabs is not None:
             for tab in tabs.findall(W + 'tab'):
@@ -262,7 +271,7 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
     _set(tpr, 'tblLayout', type='fixed')
     margins = _node(tpr, 'tblCellMar')
     for side in ('top', 'bottom'):
-        _set(margins, side, w='40', type='dxa')
+        _set(margins, side, w='20', type='dxa')
     for side in ('left', 'right'):
         _set(margins, side, w='70', type='dxa')
     row_heights: list[int] = []
@@ -284,7 +293,7 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
             _set(cpr, 'vAlign', val='center')
             cell_margins = _node(cpr, 'tcMar')
             padding = '40' if index < headers else '70'
-            for side, value in (('top', '40'), ('bottom', '40'), ('left', padding), ('right', padding)):
+            for side, value in (('top', '20'), ('bottom', '20'), ('left', padding), ('right', padding)):
                 _set(cell_margins, side, w=value, type='dxa')
             lines = 0
             paragraphs = cell.findall(W + 'p')

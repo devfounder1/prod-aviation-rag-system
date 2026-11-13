@@ -159,6 +159,134 @@ def normalize_stamps(root: Any) -> tuple[int, int, int]:
     return rotated, resized, field_count
 
 
+def normalize_frame_area(document: Any, package: Any, profile: Any) -> int:
+    """Reserve body clearance for recognized full-page ESKD header frames.
+
+    Never move drawing anchors. A different-first-page contents stamp needs a
+    separate section because Word cannot assign first-page-only body margins.
+    Unknown page furniture is left for review, not guessed from text alone.
+    """
+    import copy
+    from pathlib import PurePosixPath
+
+    body = document.find(W + 'body')
+    if body is None or 'word/_rels/document.xml.rels' not in package.namelist():
+        return 0
+    parser = ET.XMLParser(resolve_entities=False, no_network=True)
+    relations = ET.fromstring(package.read('word/_rels/document.xml.rels'), parser)
+    targets = {r.get('Id'): r.get('Target', '') for r in relations
+               if r.get('TargetMode') != 'External'}
+
+    def header(identifier: str) -> Any:
+        target = targets.get(identifier, '')
+        name = str(PurePosixPath('word') / target)
+        if not target or '..' in PurePosixPath(target).parts or name not in package.namelist():
+            return None
+        return ET.fromstring(package.read(name), parser)
+
+    def framed(root: Any) -> bool:
+        if root is None or not any('ТУ' in (t.text or '') for t in root.iter(W + 't')):
+            return False
+        for anchor in root.findall('.//wp:anchor', NS):
+            extent = anchor.find('wp:extent', NS)
+            position = anchor.find('wp:positionV', NS)
+            if (extent is not None and position is not None and position.get('relativeFrom') in {'page', 'paragraph'}
+                    and 6_000_000 <= int(extent.get('cx', '0')) <= 8_000_000
+                    and 9_000_000 <= int(extent.get('cy', '0')) <= 11_000_000):
+                return True
+        return False
+
+    def reserve(section: Any, bottom: int) -> None:
+        margins = section.find(W + 'pgMar')
+        if margins is not None:
+            for side, mm in (('top', profile.frame_top_mm), ('bottom', bottom)):
+                margins.set(W + side, str(max(int(margins.get(W + side, '0')), round(mm * 1440 / 25.4))))
+
+    sections = list(document.findall('.//w:sectPr', NS))
+    default = first = ''
+    start = count = 0
+    for section in sections:
+        for reference in section.findall(W + 'headerReference'):
+            identifier = reference.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id', '')
+            if reference.get(W + 'type') == 'default':
+                default = identifier
+            elif reference.get(W + 'type') == 'first':
+                first = identifier
+        end_block = section if section.getparent() is body else section.getparent().getparent()
+        blocks = list(body)
+        end = blocks.index(end_block)
+        substantive = any(b.tag in {W+'tbl', W+'sdt'} or b.xpath('.//w:t | .//w:drawing | .//w:pict', namespaces=NS)
+                          for b in blocks[start:end+1])
+        original_margins = copy.deepcopy(section.find(W+'pgMar'))
+        if substantive and framed(header(default)):
+            reserve(section, profile.frame_bottom_mm)
+            count += 1
+            first_header = header(first)
+            large_first = (section.find(W + 'titlePg') is not None and framed(first_header)
+                           and any((t.text or '').strip() == 'Листов' for t in first_header.iter(W + 't')))
+            if large_first:
+                contents = [b for b in blocks[start:end] if b.tag == W + 'sdt'
+                            and any('TOC ' in (t.text or '') for t in b.iter(W + 'instrText'))]
+                if len(contents) == 1:
+                    index = blocks.index(contents[0]) + 1
+                    spacers: list[Any] = []
+                    while index < end and blocks[index].tag == W + 'p' and not ''.join(blocks[index].itertext()).strip():
+                        p = blocks[index]
+                        if p.xpath('.//w:sectPr | .//w:drawing | .//w:pict | .//w:fldChar', namespaces=NS):
+                            break
+                        spacers.append(p); index += 1
+                    boundary = spacers[-1] if spacers else ET.Element(W + 'p')
+                    if not spacers:
+                        body.insert(index, boundary)
+                    toc_section = copy.deepcopy(section)
+                    reserve(toc_section, profile.first_frame_bottom_mm)
+                    for p in spacers:
+                        for br in p.xpath('.//w:br[@w:type="page"]', namespaces=NS):
+                            br.getparent().remove(br)
+                        from document_elements import _node, _set
+                        _set(_node(p, 'pPr'), 'pageBreakBefore', val='0')
+                        _node(_node(p, 'pPr'), 'spacing').attrib.clear()
+                        _set(_node(p, 'pPr'), 'spacing', before='0', after='0', line='20', lineRule='exact')
+                    from document_elements import _node
+                    _node(boundary, 'pPr').append(toc_section)
+                    section.remove(section.find(W + 'titlePg'))
+                    count += 1
+                else:
+                    # Without an unambiguous boundary, protect all pages rather
+                    # than leave body text able to overlap the larger first stamp.
+                    reserve(section, profile.first_frame_bottom_mm)
+            # A full-page change-registration grid is an existing form, not
+            # prose. Give it its original work area in its own section instead
+            # of pushing its last blank rows onto a mostly empty extra page.
+            blocks = list(body)
+            forms = [b for b in blocks[start:blocks.index(end_block)]
+                     if b.tag==W+'p' and ''.join(b.xpath('.//w:t/text()',namespaces=NS)).strip()=='Лист регистрации изменений']
+            if len(forms)==1 and original_margins is not None:
+                title = forms[0]; index=blocks.index(title)+1
+                while index<len(blocks) and blocks[index].tag==W+'p' and not ''.join(blocks[index].xpath('.//w:t/text()',namespaces=NS)).strip():
+                    index += 1
+                grid = blocks[index] if index<len(blocks) else None
+                text = ''.join(grid.xpath('.//w:t/text()',namespaces=NS)) if grid is not None else ''
+                trailing = blocks[index+1:blocks.index(end_block)+1]
+                if (grid is not None and grid.tag==W+'tbl' and len(grid.findall(W+'tr'))>=10
+                        and all(label in text for label in ('Номера листов','Подпись','Дата'))
+                        and all(b.tag==W+'p' and not ''.join(b.xpath('.//w:t/text()',namespaces=NS)).strip() for b in trailing)):
+                    boundary=title.getprevious()
+                    if boundary is None or boundary.tag!=W+'p' or boundary.find('w:pPr/w:sectPr',NS) is not None:
+                        boundary=ET.Element(W+'p'); body.insert(blocks.index(title),boundary)
+                    from document_elements import _node, _set
+                    for br in boundary.xpath('.//w:br[@w:type="page"]',namespaces=NS):
+                        br.getparent().remove(br)
+                    previous_section=copy.deepcopy(section)
+                    _set(previous_section,'type',val='nextPage')
+                    _node(boundary,'pPr').append(previous_section)
+                    section.replace(section.find(W+'pgMar'),original_margins)
+                    _set(section,'type',val='nextPage')
+                    count += 1
+        start = list(body).index(end_block) + 1
+    return count
+
+
 def refresh_pagination(path: Path, pdf: Path) -> tuple[int, int]:
     """Only update cached TOC page numbers via bookmark targets and rendered headings."""
     import pdfplumber

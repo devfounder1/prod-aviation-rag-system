@@ -150,3 +150,53 @@ Recognized manual parts of the same numbered table now flow into available space
 Added metafile_layout.py for a tightly bounded legacy EMF subset with the unavailable GOST font. It validates record sizes/counts, object/font selections, Unicode text and DX offsets/options, rejects unsupported transforms/glyph indexes/rotations, and creates a derived display part using the locally supplied Liberation Sans font and natural spacing. Only font name/average width and spacing-pointer fields change; original text strings, drawing records and connection geometry remain unchanged. The original EMF/media/OLE parts and original relationships stay byte-identical, with a new image relationship for presentation. The substitution is disclosed in approval warnings; unsupported files stay original with a review warning. The module is included in the image allowlist/fingerprint and strict CI checks.
 
 Validation: full suite 186 passed, three optional prepared-runtime tests skipped by default. Both live document tests pass separately, including a synthetic continuation with multiple manual/property breaks that must render as one page. Strict mypy passes for all 29 checked modules. The rebuilt local image processed the retained byte-identical legacy DOC copy: 24 pages versus the previous 28, seven supported tables and one repaired diagram, zero unresolved TOC targets. The external source drive was unavailable; the retained source copy matches the recorded original SHA-256 and remained unchanged. All nine original media/OLE hashes are retained, plus one derived presentation part. Rendered the exact runtime DOCX with the bundled renderer and visually reviewed all 24 pages; table continuations no longer have empty intervening pages, the appendix table fits its own page, and diagram words are readable without the previous letter collisions. Private files/renders remain ignored and out of Git. Ordinary free space remains before explicit new sections/appendices; font substitution does not reproduce the exact original GOST typeface or certify full compliance.
+## 2026-11-13 — Measured table continuations, paragraph spacing and frame work areas
+
+Follow-up visual review corrected a limitation of the previous stage: putting an
+existing continuation label into a repeated header did not label automatic
+continuations of the first physical table. Added `table_pagination` to the fixed
+local document runtime and its image allowlist, freshness fingerprint and CI type
+checks. It merges only proven adjacent same-number manual parts with identical
+header text/merges, replaces duplicate furniture, and preserves original data-row
+subtrees, values, numbering and merges. Disposable probe copies measure row rules
+in the rendered PDF; no probe IDs or guide lines enter the delivered DOCX. Tables
+are processed in document order with a fresh render after each split, then every
+supported part is checked to occupy one page. Explicit editable continuation
+captions and copied headers are added at measured page boundaries. Unknown or
+complex geometry is reported for review; ambiguous/unstable measurements fail
+without publication. Manual edits in Word can require repagination and review.
+
+Main prose remains at **1.5 line spacing**. Old before/after/autospacing attributes,
+grid snapping and inherited paragraph keeps are cleared instead of reducing that
+line spacing. The first main section and appendices keep their page starts;
+subsequent main sections flow. Tables keep 12 pt data/10 pt headers and single
+spacing, with no extra paragraph-after gaps and 1 pt vertical padding. Numbered
+full-width notes reserve enough label space inside the table border.
+
+Recognized existing framed sections reserve top/bottom body margins of at least
+16/35 mm without moving the frame artwork. Contents with the larger first stamp
+receive a separate 57 mm bottom work area. The proven full-page change-register
+form gets its own section with original margins, avoiding a nearly empty extra
+page of blank grid rows. Empty trailing sections are not treated as main prose.
+These settings support the reviewed existing form; they are not universal GOST
+page margins or full conformity certification. Updated README, formatting guide
+and AGENTS.md to state this scope and the retained 1.5 spacing requirement.
+
+Validation: **195 tests passed, 4 optional runtime tests skipped by default**;
+all three live document-runtime tests passed separately, including two long
+tables whose positions affect each other. Strict mypy passed for all 30 checked
+modules, desktop/worker syntax checks and diff whitespace checks passed. Doctor
+reported ready; deterministic retrieval evaluation passed (source recall@1=1.0).
+The final rebuilt image processed the retained byte-identical original DOC into
+24 editable pages with zero unresolved TOC targets. The exact final DOCX was
+rendered with the bundled renderer and all 24 pages visually reviewed; the final
+note-indent adjustment changed only pages 9, 11 and 22 by pixel comparison.
+Continuation captions appear on pages 8–11, the equipment table fits one page,
+the change-register grid fits one page, and the formerly sparse section-ending
+page now includes the following section. Checked 141 main prose paragraphs for
+line=360 (1.5); the greatest inspected main-body ink bottom was 741.07 pt, above
+the stamp. Compared 37 technical/appendix table data rows against the retained
+baseline, including cell values and merge signatures. All nine original media/OLE
+payload hashes remain present, plus the already disclosed derived display copy.
+The original DOC hash is unchanged. Private source, final DOCX, renders and audit
+JSON remain ignored under eval-results and are excluded from Git.

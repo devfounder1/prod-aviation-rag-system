@@ -97,15 +97,18 @@ def format_docx(source: Path, target: Path) -> FormatReport:
             if paragraph.xpath('.//w:drawing | .//w:pict | .//w:object | .//w:fldChar', namespaces=NS):
                 continue
             ppr = _element(paragraph, 'pPr')
+            _prop(ppr, 'snapToGrid', val='0')
             if role in {'heading1', 'heading2', 'заголовок1', 'заголовок2'}:
+                first_heading = headings == 0
                 headings += 1
                 _prop(ppr, 'keepNext', val='1')
                 _prop(ppr, 'suppressAutoHyphens', val='1')
+                _element(ppr, 'spacing').attrib.clear()
                 _prop(ppr, 'spacing', before=str(profile.heading_gap_pt * 20),
                       after=str(profile.heading_gap_pt * 20),
                       line=str(round(profile.body_line * 240)), lineRule='auto')
                 if role in {'heading1', 'заголовок1'}:
-                    _prop(ppr, 'pageBreakBefore', val='1')
+                    _prop(ppr, 'pageBreakBefore', val='1' if first_heading or profile.section_new_page else '0')
                 for run in paragraph.findall(W + 'r'):
                     if run.find(W + 't') is not None:
                         rpr = run.find(W + 'rPr')
@@ -118,7 +121,12 @@ def format_docx(source: Path, target: Path) -> FormatReport:
                         _prop(rpr, 'szCs', val=size)
             elif role in {'normal', 'bodytext', 'heading3', 'heading4', 'заголовок3', 'заголовок4'}:
                 body_count += 1
-                _prop(ppr, 'spacing', line=str(round(profile.body_line * 240)), lineRule='auto')
+                _element(ppr, 'spacing').attrib.clear()
+                _prop(ppr, 'spacing', before='0', after='0',
+                      line=str(round(profile.body_line * 240)), lineRule='auto')
+                _prop(ppr, 'keepNext', val='0')
+                _prop(ppr, 'keepLines', val='0')
+                _prop(ppr, 'widowControl', val='1')
                 if role in {'heading3', 'heading4', 'заголовок3', 'заголовок4'}:
                     # In imported technical documents these styles describe
                     # numbered requirements. Inherited heading keeps otherwise
@@ -151,6 +159,8 @@ def format_docx(source: Path, target: Path) -> FormatReport:
             first = section.find(W + 'titlePg')
             if kind is not None and kind.get(W + 'val') == 'continuous' and first is not None:
                 section.remove(first)
+        from document_layout import normalize_frame_area
+        framed_sections = normalize_frame_area(document, package, profile)
         if not headings:
             raise ValueError('Не найдены размеченные разделы. Нужна проверка структуры; автоматическое угадывание отключено.')
         elements = normalize_elements(document, profile.table_pt, profile.table_header_pt)
@@ -204,6 +214,8 @@ def format_docx(source: Path, target: Path) -> FormatReport:
     return FormatReport(profile.title, (
         f'Оформлены заголовки разделов и подразделов: {headings}.',
         f'Межстрочный интервал {profile.body_line:g} применён к основному тексту: {body_count} абзацев.',
+        'Убраны старые интервалы до/после обычных абзацев и привязка строк к сетке. Следующие разделы идут в потоке; приложения — с новой страницы.',
+        f'Зарезервировано место между основным текстом и рамкой/штампом в распознанных разделах: {framed_sections}.',
         f'Для обычных абзацев применён отступ {profile.indent_mm:g} мм; нумерация и специальные блоки сохранены.',
         f'Оформлены таблицы с подписями: {elements.tables}. Сохранены значения и объединения ячеек; настроены шапки и переносы.',
         f'Размещены существующие рисунки: {elements.figures}. Масштаб пропорциональный; подписи и пояснения связаны с изображением.',

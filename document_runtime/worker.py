@@ -16,6 +16,7 @@ from gost_formatter import format_docx  # noqa: E402
 from document_inspection import inspect_docx  # noqa: E402
 from document_layout import refresh_pagination  # noqa: E402
 from standard_profiles import runtime_files  # noqa: E402
+from table_pagination import paginate_tables  # noqa: E402
 from pypdf import PdfReader  # noqa: E402
 
 
@@ -51,6 +52,15 @@ def main() -> None:
     artifact = out / 'document.docx'
     report = asdict(format_docx(source, artifact))
     report['warnings'] = list(report['warnings'])
+    merged, continuations, skipped = paginate_tables(artifact, convert)
+    report['changes'] = list(report['changes']) + [
+        f'Объединены ручные части таблиц с одинаковой шапкой: {merged}. '
+        f'После расчёта страниц добавлены подписи продолжения: {continuations}. '
+        'Значения и нумерация строк сохранены; повторные шапки пересобраны.'
+    ]
+    if skipped:
+        report['warnings'].append(f'Постраничный расчёт не применён к сложным или неоднозначным таблицам: {skipped}. Проверьте их переносы вручную.')
+    report['warnings'].append('При дальнейших правках текста или ширины столбцов в Word проверьте переносы заново: части таблиц рассчитаны по текущей вёрстке.')
     pdf = convert(artifact, out, 'pdf:writer_pdf_Export')
     unresolved = 0
     for _ in range(3):

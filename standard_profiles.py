@@ -18,7 +18,7 @@ from typing import Any
 SUPPORTED_SELECTION: dict[str, frozenset[str]] = {
     'gost_r_2_105_2019.json': frozenset({
         'heading-format', 'heading-clearance', 'section-page-break',
-        'body-line-spacing', 'paragraph-indent', 'secondary-font-size',
+        'body-line-spacing', 'paragraph-indent', 'secondary-font-size', 'frame-clearance',
         'table-caption-position', 'table-header-continuation', 'table-numbering',
         'figure-caption-position', 'figure-numbering',
     }),
@@ -39,6 +39,10 @@ class FormattingProfile:
     indent_mm: float
     table_pt: int
     table_header_pt: int
+    section_new_page: bool
+    frame_top_mm: int
+    frame_bottom_mm: int
+    first_frame_bottom_mm: int
     selected_files: tuple[str, ...]
 
 
@@ -110,8 +114,11 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
     settings = recipe.get('project_choices')
     bounds = {'heading_pt': (14, 24), 'subheading_pt': (12, 20),
               'heading_gap_pt': (20, 48), 'body_line': (1, 2),
-              'indent_mm': (12.5, 17), 'table_pt': (10, 14), 'table_header_pt': (10, 14)}
-    if not isinstance(settings, dict) or set(settings) != set(bounds):
+              'indent_mm': (12.5, 17), 'table_pt': (10, 14), 'table_header_pt': (10, 14),
+              'frame_top_mm': (16, 30), 'frame_bottom_mm': (35, 50),
+              'first_frame_bottom_mm': (57, 70)}
+    if (not isinstance(settings, dict) or set(settings) != set(bounds) | {'section_new_page'}
+            or type(settings.get('section_new_page')) is not bool):
         raise ValueError('Неполные или неизвестные параметры оформления')
     for key, (minimum, maximum) in bounds.items():
         value = settings[key]
@@ -127,11 +134,13 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
     return FormattingProfile('eskd-text-v1', title, int(settings['heading_pt']),
                              int(settings['subheading_pt']), int(settings['heading_gap_pt']),
                              float(settings['body_line']), float(settings['indent_mm']),
-                             int(settings['table_pt']), int(settings['table_header_pt']), tuple(selected))
+                             int(settings['table_pt']), int(settings['table_header_pt']),
+                             settings['section_new_page'], int(settings['frame_top_mm']),
+                             int(settings['frame_bottom_mm']), int(settings['first_frame_bottom_mm']), tuple(selected))
 
 
 def runtime_files() -> tuple[str, ...]:
     """Code and selected evidence covered by the host/image freshness check."""
     return ('document_inspection.py', 'gost_formatter.py', 'document_layout.py',
-            'document_elements.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
+            'document_elements.py', 'table_pagination.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
             *(f'standards/{name}' for name in load_profile().selected_files))

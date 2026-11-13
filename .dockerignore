@@ -3,6 +3,7 @@
 !gost_formatter.py
 !document_layout.py
 !document_elements.py
+!table_pagination.py
 !metafile_layout.py
 !standard_profiles.py
 !standards/

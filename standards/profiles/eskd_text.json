@@ -8,7 +8,7 @@
       "file": "gost_r_2_105_2019.json",
       "profile_id": "gost-r-2.105-2019-user-copy-2024",
       "sha256": "c3bb3ae4a47c190004bc48225dc8bce53e9579e8b05379a1429d749e28d250ad",
-      "rule_ids": ["heading-format", "heading-clearance", "section-page-break", "body-line-spacing", "paragraph-indent", "secondary-font-size", "table-caption-position", "table-header-continuation", "table-numbering", "figure-caption-position", "figure-numbering"]
+      "rule_ids": ["heading-format", "heading-clearance", "section-page-break", "body-line-spacing", "paragraph-indent", "secondary-font-size", "frame-clearance", "table-caption-position", "table-header-continuation", "table-numbering", "figure-caption-position", "figure-numbering"]
     },
     {
       "file": "gost_r_2_104_2023.json",
@@ -24,7 +24,11 @@
     "body_line": 1.5,
     "indent_mm": 12.5,
     "table_pt": 12,
-    "table_header_pt": 10
+    "table_header_pt": 10,
+    "section_new_page": false,
+    "frame_top_mm": 16,
+    "frame_bottom_mm": 35,
+    "first_frame_bottom_mm": 57
   },
   "notes": [
     "Численные настройки — выбранный вариант оформления проекта, а не утверждение об обязательных значениях во всех ГОСТах.",

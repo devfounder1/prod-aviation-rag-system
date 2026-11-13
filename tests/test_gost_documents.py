@@ -322,6 +322,49 @@ def test_real_continuation_has_no_blank_pages_or_orphan_caption(tmp_path: Path) 
     with ZipFile(io.BytesIO(result.docx)) as package:
         tree=ET.fromstring(package.read('word/document.xml'))
         ns={'w':W[1:-1]}
-        rows=tree.find('w:body',ns).findall(W+'tbl')[1].findall(W+'tr')
-        assert rows[0].xpath('.//w:t/text()',namespaces=ns) == ['Продолжение таблицы 1']
-        assert rows[1].find('w:trPr/w:tblHeader',ns).get(W+'val') == '1'
+        tables=tree.find('w:body',ns).findall(W+'tbl')
+        assert len(tables)==1
+        rows=tables[0].findall(W+'tr')
+        assert rows[0].find('w:trPr/w:tblHeader',ns).get(W+'val') == '1'
+        assert len(rows)==3
+        assert 'Record A' in ''.join(rows[1].xpath('.//w:t/text()',namespaces=ns))
+        assert 'Record B' in ''.join(rows[2].xpath('.//w:t/text()',namespaces=ns))
+
+
+@pytest.mark.skipif(os.environ.get('BUTUZ_DOCUMENTS_LIVE') != '1', reason='Requires prepared local document image')
+def test_real_automatic_table_continuations_are_explicit_and_keep_every_record(tmp_path: Path) -> None:
+    doc=Document(); doc.add_heading('Requirements',1); doc.add_paragraph('Таблица 1')
+    table=doc.add_table(rows=46,cols=2)
+    table.cell(0,0).text='Наименование'; table.cell(0,1).text='Значение'
+    # Explicit ruling is required for the measured flat-table profile.
+    from docx.oxml import OxmlElement
+    borders=OxmlElement('w:tblBorders')
+    for side in ('top','left','bottom','right','insideH','insideV'):
+        edge=OxmlElement('w:'+side)
+        edge.set(W+'val','single');edge.set(W+'sz','8');borders.append(edge)
+    table._tbl.tblPr.append(borders)
+    for i in range(1,46):
+        table.cell(i,0).text=f'Record {i:03}: stable original technical content'
+        table.cell(i,1).text=f'{i}.001'
+    # Splitting the first table changes the second table's starting position.
+    # Both must be measured in document order, without tiny refinement chunks.
+    doc.add_paragraph('Таблица 2')
+    second=doc.add_table(rows=31,cols=2)
+    second._tbl.tblPr.append(copy.deepcopy(borders))
+    second.cell(0,0).text='Наименование';second.cell(0,1).text='Значение'
+    for i in range(1,31):
+        second.cell(i,0).text=f'Second {i:03}: more stable original content'
+        second.cell(i,1).text=f'{i}.002'
+    source=tmp_path/'source.docx';doc.save(source);raw=source.read_bytes()
+    result=document_runner.prepare_document(source)
+    assert source.read_bytes()==raw and len(result.pages)>=2
+    with ZipFile(io.BytesIO(result.docx)) as package:
+        tree=ET.fromstring(package.read('word/document.xml')); ns={'w':W[1:-1]}
+        tables=tree.find('w:body',ns).findall(W+'tbl')
+        captions=tree.xpath('./w:body/w:p/w:r/w:t/text()',namespaces=ns)
+        assert len(tables)>=len(result.pages)
+        assert sum(t in {'Продолжение таблицы 1','Продолжение таблицы 2'} for t in captions)==len(tables)-2
+        records=[r.xpath('.//w:t/text()',namespaces=ns) for t in tables for r in t.findall(W+'tr')[1:]]
+        assert records==([[f'Record {i:03}: stable original technical content',f'{i}.001'] for i in range(1,46)]
+                         + [[f'Second {i:03}: more stable original content',f'{i}.002'] for i in range(1,31)])
+        assert b'ZZBT' not in package.read('word/document.xml')
