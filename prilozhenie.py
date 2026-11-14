@@ -204,6 +204,8 @@ class AviationRAGApp:
         if self._shutdown_started.is_set():
             return
         self._shutdown_started.set()
+        if hasattr(self, 'project_browser'):
+            self.project_browser.cancel()
         self._ui_dispatch.close()
         self._jobs.close()
         self.is_processing = False
@@ -361,9 +363,11 @@ class AviationRAGApp:
         self.folder_picker = ft.FilePicker(on_result=self._on_folder_pick_result)
         self.page.overlay.append(self.folder_picker)
         self._folder_pick_target = None
-        self.project_picker = ft.FilePicker(on_result=self._on_project_folder_result)
-        self.page.overlay.append(self.project_picker)
-        self._project_pick_chat = None
+        from project_picker_ui import ProjectFolderBrowser
+        self.project_browser = ProjectFolderBrowser(
+            self.page, lambda: self.chat_manager.current_chat_id,
+            self._begin_project_import, self._ui_dispatch,
+        )
         
         # FilePicker для файлов БОЛЬШЕ НЕ НУЖЕН:
         # прикрепление файлов теперь работает через встроенный браузер _open_file_browser()
@@ -554,25 +558,18 @@ class AviationRAGApp:
         self._open_file_browser()
 
     def _handle_project_click(self, _: Any) -> None:
-        if self.is_processing or self._project_pick_chat is not None:
-            return
-        self._project_pick_chat = self.chat_manager.current_chat_id
-        try:
-            self.project_picker.get_directory_path(dialog_title='Выберите папку проекта для копирования в чат')
-        except Exception as exc:
-            self._project_pick_chat = None
-            self._show_toast(f'Не удалось открыть выбор папки: {exc}')
+        if not self.is_processing:
+            self.project_browser.open()
 
-    def _on_project_folder_result(self, event: ft.FilePickerResultEvent) -> None:
-        chat_id, self._project_pick_chat = self._project_pick_chat, None
-        if (not chat_id or not event.path or self.is_processing or not self._ui_dispatch.active
+    def _begin_project_import(self, chat_id: str, path: Path) -> None:
+        if (self.is_processing or not self._ui_dispatch.active
                 or self.chat_manager.current_chat_id != chat_id):
             return
         job = self._jobs.start(chat_id)
         self.is_processing = True
         self._set_activity(ActivityEvent('working', 'Копирую и проверяю файлы проекта', 'AGENT'))
         self.page.update()
-        self._ui_dispatch.run_task(self._import_project_folder, job, Path(event.path))
+        self._ui_dispatch.run_task(self._import_project_folder, job, path)
 
     async def _import_project_folder(self, job: RequestJob, source: Path) -> None:
         from file_tools import workspace_for_chat
@@ -658,6 +655,8 @@ class AviationRAGApp:
         self._apply_activity(ActivityEvent("error", "Проверьте сообщение об ошибке"))
 
     def _cancel_active_job(self) -> None:
+        if hasattr(self, 'project_browser'):
+            self.project_browser.cancel()
         self._jobs.cancel()
         self.is_processing = False
         self._set_activity(ActivityEvent("ready"))
@@ -1231,7 +1230,7 @@ class AviationRAGApp:
         else:
             self.welcome.visible = True
         self.project_status.visible = False
-        self._project_pick_chat = None
+        self.project_browser.cancel()
         if self.chat_manager.current_chat_id:
             self._ui_dispatch.run_task(self._refresh_projects, self.chat_manager.current_chat_id)
         self.page.update()

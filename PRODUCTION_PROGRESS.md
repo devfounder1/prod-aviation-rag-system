@@ -313,3 +313,46 @@ staged. Flet picker/modal/file-list callbacks were tested with real controls and
 a running page loop; a native desktop window was not manually exercised here.
 Final offline suite: 246 passed, 5 optional runtime checks skipped; the selected
 project and container boundary checks also passed with the prepared image enabled.
+
+### 2026-11-14 — Fix project selection and complete the native desktop check
+
+The real desktop check exposed a gap the original mocked-picker test missed:
+the native FilePicker did not visibly open/return a selection, while the pending
+chat flag made subsequent «Открыть проект» clicks no-ops. Replace that path with
+a visible in-app ProjectFolderBrowser. It opens before filesystem work, lists
+bounded directory pages off the page loop, supports direct absolute paths and
+folder navigation, and keeps invalid paths editable. Empty/relative paths cannot
+implicitly choose the application's own directory. Cancel, dismiss, chat switch
+and shutdown release session ownership; old listing/confirmation callbacks cannot
+import into a different chat. No persistent runtime data or original files moved.
+
+Validation: 251 tests passed, 5 optional runtime tests skipped; strict mypy passed
+all 35 hardened modules, and desktop integration compiles. Tests exercise actual
+Flet modal actions on a running loop, invalid-path retry, cancel/reopen, late
+dismissal, stale chat confirmation and the end-to-end import callback instead of
+mocking get_directory_path as proof of a visible chooser. Doctor reports ready
+with intact chat/Chroma SQLite stores; deterministic retrieval recall@1 remains 1.
+
+Native GUI verification (uv-launched app, qwen2.5:14b, existing local Docker):
+
+- On startup, existing conversations and the latest conversation appeared before
+  using «Новый чат». A separate diagnostic chat was then created through the GUI.
+- «Открыть проект» displayed the new modal, cancellation allowed reopening, and
+  folder navigation imported the synthetic four-file gui_math_demo tree with zero
+  exclusions. Agent mode and the project label appeared in the real window.
+- The agent actually ran pytest in the sandbox and showed AssertionError / exit 1.
+  Its approval modal displayed the exact result path and `a - b` → `a + b` diff.
+  Approving it published the complete working project and a verified file receipt.
+- The first request stopped without rerunning tests and retained an earlier wrong
+  relative-path error in its report. An explicit GUI follow-up targeting the
+  results project's tests produced actual `1 passed in 0.00s`, exit 0. This is a
+  documented model-workflow limitation, not evidence of a guaranteed autonomous
+  repair loop or large-project reliability.
+- The real «Файлы чата» modal listed all four result files, including package/calc.py,
+  with reveal/export actions. Readback verified the corrected bytes; hashes of all
+  four host originals and all four input-snapshot files still matched the baseline.
+
+The app remains open on the diagnostic chat's file panel for inspection. Private
+GUI evidence and synthetic workspaces are ignored under eval-results/agent_workspace
+and are not committed. No cloud requests, model downloads, host execution of
+generated code or bypass of write approval were used.

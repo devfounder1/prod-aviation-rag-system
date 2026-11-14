@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import os
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -245,19 +244,25 @@ def test_picker_captures_chat_and_async_import_is_visible(
     source = tmp_path / 'demo'; source.mkdir(); (source / 'hello.py').write_text('print(1)')
     app = desktop()
     app.page.loop = page_loop
-    app.project_picker.get_directory_path = MagicMock()
     app._show_toast = MagicMock()
-    app._handle_project_click(None)
-    assert app._project_pick_chat == 'a'
-    app.project_picker.get_directory_path.assert_called_once()
-    app.chat_manager.current_chat_id = 'b'
-    app._on_project_folder_result(SimpleNamespace(path=str(source)))
-    assert pw.projects(file_tools.workspace_for_chat('a')) == []
-    app.chat_manager.current_chat_id = 'a'
-    app._handle_project_click(None)
-    # Schedule the actual Flet result callback on its page loop.
     async def choose() -> None:
-        app._on_project_folder_result(SimpleNamespace(path=str(source)))
+        app._handle_project_click(None)
+        while app.project_browser.dialog is None:
+            await asyncio.sleep(0.01)
+        dialog = app.project_browser.dialog
+        field = dialog.content.content.controls[1].controls[1]
+        field.value = str(source)
+        app.chat_manager.current_chat_id = 'b'
+        await dialog.actions[1].on_click(None)
+        assert pw.projects(file_tools.workspace_for_chat('a')) == []
+        app.project_browser.cancel()
+        app.chat_manager.current_chat_id = 'a'
+        app._handle_project_click(None)
+        while app.project_browser.dialog is None:
+            await asyncio.sleep(0.01)
+        dialog = app.project_browser.dialog
+        dialog.content.content.controls[1].controls[1].value = str(source)
+        await dialog.actions[1].on_click(None)
         while app.is_processing:
             await asyncio.sleep(0.01)
     asyncio.run_coroutine_threadsafe(choose(), page_loop).result(timeout=5)
