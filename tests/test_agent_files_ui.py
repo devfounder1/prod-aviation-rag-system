@@ -144,3 +144,25 @@ def test_save_picker_cancel_and_chat_switch_leave_files_untouched(
     ui.pending_export = ('a', source)
     ui.save_result(MagicMock(path=str(destination)))
     assert destination.read_text() == 'result'
+
+
+def test_large_project_outputs_are_paged_without_losing_file_actions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, page_loop: asyncio.AbstractEventLoop,
+) -> None:
+    monkeypatch.setattr(file_tools, 'WORKSPACE', tmp_path / 'chats')
+    root = file_tools.workspace_for_chat('a')
+    for i in range(61):
+        (root / f'{i:03}.txt').write_text(str(i))
+    page = MagicMock(loop=page_loop)
+    ui = AgentFilesUI(page, lambda: 'a', MagicMock())
+    asyncio.run_coroutine_threadsafe(ui.show('a'), page_loop).result(timeout=3)
+    first = page.open.call_args.args[0]
+    assert len(first.content.content.controls[2].controls) == 50
+    assert first.actions[0].text == 'Далее'
+    ui.change_page('a', 50, first)
+    # An ordered loop barrier waits for the requested page task.
+    asyncio.run_coroutine_threadsafe(asyncio.sleep(0.05), page_loop).result(timeout=3)
+    second = page.open.call_args.args[0]
+    rows = second.content.content.controls[2].controls
+    assert len(rows) == 11 and rows[0].controls[1].value == '050.txt'
+    assert second.actions[0].text == 'Назад'

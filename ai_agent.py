@@ -17,6 +17,7 @@ from answer_prompts import (SEARCH_SYSTEM_PROMPT, document_answer_instruction,
                             needs_grounding_review, grounding_review_messages)
 from config import settings
 from conversation_context import recent_history
+from agent_context import AgentContext, ContextBudgetError
 
 FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'update_attached_file'}
 logger = logging.getLogger(__name__)
@@ -42,14 +43,21 @@ SYSTEM_PROMPT = """Ты — универсальный локальный пом
 сообщи причину; не предлагай обход через хост. Не выдумывай успешные тесты: опирайся на фактические результаты.
 Не обязательно изменять код или создавать файл: результатом может быть ответ или анализ.
 Для изменения существующего файла сначала прочитай его; для кода при необходимости проверь тестами.
+Для проекта начни с list_projects и project_map, затем search_project и read_file_lines.
+Не читай все файлы подряд. Карта AST показывает Python-функции, классы и импорты; для других языков используй поиск.
+Правь минимальный нужный диапазон. Окно записи показывает различия и полное будущее содержимое.
+Первая подтверждённая правка проекта создаёт полную копию в results/projects; исходная папка не меняется.
+После правки при необходимости запускай подходящий файл или каталог тестов через run_pytest.
+Опирайся на ошибки тестов, перечитывай затронутые строки и исправляй их; каждая новая запись требует подтверждения.
+Не устанавливай отсутствующие зависимости и не считай их отсутствие успешным тестом.
 Не выходи за пределы рабочей папки. Если инструмент недоступен, объясни ограничение.
 После выполнения задачи дай понятный итог на языке пользователя."""
 
 
 class LocalAgent:
-    def __init__(self, llm: BaseChatModel, max_iterations: int = 15) -> None:
+    def __init__(self, llm: BaseChatModel, max_iterations: int | None = None) -> None:
         self.llm = llm
-        self.max_iterations = max_iterations
+        self.max_iterations = max_iterations if max_iterations is not None else settings.agent_max_steps
 
     def run(self, task: str, chat_history: list[dict[str, Any]] | None = None,
             on_step: Callable[[str], None] | None = None,
@@ -100,12 +108,18 @@ class LocalAgent:
                 return file_outcome() + '\nИнструменты записи недоступны в этом запросе.'
         if document_answer:
             messages.append(SystemMessage(content=SEARCH_SYSTEM_PROMPT + '\n\n' + document_answer_instruction(task)))
+        window = AgentContext(messages, settings.agent_context_chars)
         for _ in range(self.max_iterations):
             if cancel_flag and cancel_flag.get("cancelled"):
                 return "Выполнение отменено."
             if on_activity:
                 on_activity(ActivityEvent('thinking', 'Обдумываю следующий шаг', 'AGENT'))
             options: dict[str, Any] = {'max_tokens': settings.document_answer_max_tokens, 'temperature': 0} if document_answer else {}
+            try:
+                messages = window.fit(messages)
+            except ContextBudgetError as exc:
+                outcome = file_outcome() if mutations_attempted or delivery_required else '\n\n'.join(executions)
+                return (outcome + '\n' if outcome else '') + str(exc)
             response = model.invoke(messages, **options)
             messages.append(response)
             if not isinstance(response, AIMessage) or not response.tool_calls:
@@ -155,6 +169,9 @@ class LocalAgent:
                 except Exception as exc:
                     result = f"Ошибка инструмента: {exc}"
                 tool_message = result if isinstance(result, ToolMessage) else ToolMessage(content=str(result), tool_call_id=call['id'])
+                if len(str(tool_message.content)) > 6000:
+                    tool_message = tool_message.model_copy(update={'content': str(tool_message.content)[:6000] +
+                        '\n[Результат сокращён для контекста; используй поиск, страницы карты или меньшие диапазоны строк.]'})
                 messages.append(tool_message)
                 if call['name'] == 'search_documents':
                     document_answer = True

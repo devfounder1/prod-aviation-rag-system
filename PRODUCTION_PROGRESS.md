@@ -264,3 +264,52 @@ as the controls are mounted, without creating a chat or changing stored history.
 Validation: 17 startup, chat-store and activity/UI tests passed. The regression
 test reopens a temporary SQLite database with two conversations and checks both
 sidebar entries and the latest messages before any user action.
+
+### 2026-11-14 — Project folders, bounded code context and project tests
+
+- Added desktop «Открыть проект»: a request-owned cancellable worker imports the
+  selected folder into an immutable per-chat snapshot with preserved paths and
+  verified hashes. Fixed filters exclude known dependencies/caches, hidden files,
+  common secret names, symlinks, non-UTF-8 and binary files. This is not a full
+  .gitignore implementation or secret-content scanner. Limits: 1500 files,
+  1 MB per input file, 16 MB total; excess rejects the whole import. Reimporting
+  makes a new ID. No source files are overwritten or added to Chroma.
+- Added scoped project listing, paged Python AST map (functions/classes/imports),
+  and literal whole-project search returning paths/line numbers. Other text
+  languages support file navigation/search but not AST symbol maps/test runners.
+- The first approved project edit validates every source hash and atomically
+  publishes a complete results/projects copy containing unchanged dependencies
+  and the approved modification. Later reads/search/edits follow that working
+  tree even through old input paths. No partial result on refusal/cancellation.
+  File approval includes a bounded unified diff and exact full future content;
+  writes still return verified FileReceipt artifacts. Files panel pages 50 rows.
+- Agent context removes whole old tool exchanges with a bounded navigation ledger,
+  preserving original task/instructions and tool-call pairing. Tool excerpts are
+  explicitly marked when shortened. The character budget (16000 default) is an
+  approximation excluding tool schemas, not an Ollama token-window configuration;
+  an unfit request stops truthfully. Step limit defaults to 30. Stored history is
+  untouched. No model/server global settings or providers changed.
+- Existing isolated Docker runner now executes an imported project's latest
+  filtered snapshot with its project root as CWD; pytest accepts a test file or
+  directory. No host-code fallback, package installation, network access or new
+  container privileges. Existing time/output/resource limits remain in effect.
+
+Validation: startup, intake, filtering (including FIFO/symlink rejection), limits,
+cancellation, stale picker results, chat scope, snapshot tampering, exact diff
+approval/receipts, file-panel pagination, context pairing and tool-driven test
+repair have regression coverage. Strict mypy passed all 34 hardened modules;
+desktop integration compiles. Doctor reports ready=true and both SQLite stores
+pass integrity checks. Deterministic retrieval evaluation remains unchanged.
+
+Live verification with the already prepared butuz-sandbox:local image passed the
+project-root regression (initial failing test, approved addition fix, passing test)
+and existing container/network/write boundaries. Real qwen2.5:14b independently
+completed the same synthetic four-file project task through SmartRAG in about
+64 seconds: actual pytest AssertionError/exit 1, one approval, verified edit,
+actual 1 passed/exit 0. The original folder remained byte-identical. This was a
+small reproducible task, not a large-repository reliability benchmark. Evidence
+is ignored under eval-results/project-folder-fix; only synthetic tests/code are
+staged. Flet picker/modal/file-list callbacks were tested with real controls and
+a running page loop; a native desktop window was not manually exercised here.
+Final offline suite: 246 passed, 5 optional runtime checks skipped; the selected
+project and container boundary checks also passed with the prepared image enabled.

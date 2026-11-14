@@ -168,6 +168,8 @@ class SmartRAG:
                     return "Выполнение отменено.", []
         logger.info("Request route=%s model=%s chat_id=%s", intent, self.model_name, active_chat)
         if intent == "AGENT":
+            from file_tools import workspace_for_chat
+            from project_workspace import project_summary
             sources: list[str] = []
             document_answer = document_question(question)
             document_context = ''
@@ -181,7 +183,8 @@ class SmartRAG:
                 question, chat_history,
                 on_step=(lambda step: on_token(step)) if on_token and not on_activity else None,
                 tools=self._agent_tools(active_chat, sources, attachments, approve, cancel_flag),
-                context="\n\n".join(filter(None, [user_context or recent_file_context, visual_context, document_context])),
+                context="\n\n".join(filter(None, [user_context or recent_file_context, visual_context, document_context,
+                                                   project_summary(workspace_for_chat(active_chat))])),
                 cancel_flag=cancel_flag,
                 image_parts=[part for part in content[1:] if isinstance(part, dict)],
                 on_activity=on_activity, document_answer=document_answer)

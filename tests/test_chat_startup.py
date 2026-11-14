@@ -1,5 +1,6 @@
 """Starting the desktop must display persisted chats without creating another."""
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -23,7 +24,7 @@ def test_startup_restores_sidebar_and_current_messages(tmp_path: Path, monkeypat
     before = reopened.chats
     monkeypatch.setattr(prilozhenie, 'ChatManager', lambda: reopened)
     monkeypatch.setattr(prilozhenie.threading.Thread, 'start', lambda _: None)
-    monkeypatch.setitem(__import__('sys').modules, 'voice_input', SimpleNamespace(WakeWordListener=MagicMock()))
+    monkeypatch.setitem(sys.modules, 'voice_input', SimpleNamespace(WakeWordListener=MagicMock()))
     monkeypatch.setattr(prilozhenie.AviationRAGApp, '_load_prl_path', lambda _: '/configured')
     monkeypatch.setattr(prilozhenie.ft.Column, 'scroll_to', MagicMock())
     page = MagicMock()

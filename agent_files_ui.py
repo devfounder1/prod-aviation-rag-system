@@ -142,7 +142,7 @@ class AgentFilesUI:
             return
         self.ui.run_task(self.show, chat_id)
 
-    async def show(self, chat_id: str) -> None:
+    async def show(self, chat_id: str, offset: int = 0) -> None:
         try:
             root, paths = await asyncio.to_thread(
                 lambda: (workspace_for_chat(chat_id), output_files(chat_id)))
@@ -151,9 +151,10 @@ class AgentFilesUI:
             return
         if self.current_chat() != chat_id:
             return
+        offset = max(0, min(offset, max(0, len(paths)-1)//50*50))
         rows: list[ft.Control] = []
         dialog: ft.AlertDialog
-        for path in paths:
+        for path in paths[offset:offset+50]:
             rows.append(ft.Row([
                 brand_icon('files'),
                 ft.Text(str(path.relative_to(root)), expand=True, selectable=True),
@@ -165,17 +166,26 @@ class AgentFilesUI:
         dialog = ft.AlertDialog(
             title=ft.Text('Файлы чата'),
             content=ft.Container(width=720, content=ft.Column([
-                ft.Text('Здесь результаты работы агента. Копии прикреплённых документов скрыты.'),
+                ft.Text('Здесь результаты работы агента. Копии прикреплённых документов скрыты. '
+                        + (f'Показаны {offset+1}–{min(offset+50,len(paths))} из {len(paths)}.' if paths else '')),
                 ft.Text(str(root), selectable=True, size=12),
                 ft.Column(rows or [ft.Text('В этом чате ещё нет созданных файлов.')],
                           height=300, scroll=ft.ScrollMode.AUTO),
             ], tight=True)),
             actions=[
+                *([ft.TextButton('Назад', on_click=lambda _: self.change_page(chat_id, offset-50, dialog))] if offset else []),
+                *([ft.TextButton('Далее', on_click=lambda _: self.change_page(chat_id, offset+50, dialog))] if offset+50<len(paths) else []),
                 ft.TextButton('Открыть папку', on_click=lambda _: self.reveal(chat_id, root)),
                 ft.TextButton('Закрыть', on_click=lambda _: self.page.close(dialog)),
             ],
         )
         self.page.open(dialog)
+
+    def change_page(self, chat_id: str, offset: int, dialog: ft.AlertDialog) -> None:
+        if not self.ui.active or self.current_chat() != chat_id:
+            return
+        self.page.close(dialog)
+        self.ui.run_task(self.show, chat_id, offset)
 
     def reveal(self, chat_id: str, path: Path) -> None:
         if not self.ui.active or self.current_chat() != chat_id:

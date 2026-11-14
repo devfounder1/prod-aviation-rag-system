@@ -76,8 +76,17 @@ def execute(root: Path, file_path: str, tests: bool = False,
         raise ValueError('Timeout must be between 0 and 30 seconds')
     root = root.resolve()
     target = (root / file_path).resolve()
-    if not target.is_relative_to(root) or not target.is_file() or target.suffix != '.py':
-        raise ValueError('Выберите Python-файл внутри рабочей папки чата')
+    if not target.is_relative_to(root):
+        raise ValueError('Выберите путь внутри рабочей папки чата')
+    from project_workspace import effective_path, project_location
+    target = effective_path(root, target)
+    location = project_location(root, target)
+    if location:
+        project_id, _ = location
+        kind = target.relative_to(root).parts[0]
+        root = root / kind / 'projects' / project_id
+    if not ((target.is_file() and target.suffix == '.py') or (tests and target.is_dir())):
+        raise ValueError('Выберите Python-файл или, для pytest, папку тестов внутри проекта')
     relative = target.relative_to(root)
     if any(part.startswith('.') for part in relative.parts):
         raise ValueError('Скрытые файлы не передаются в песочницу')
@@ -95,7 +104,7 @@ def execute(root: Path, file_path: str, tests: bool = False,
         source = Path(directory)
         source.chmod(0o755)
         snapshot(root, source)
-        if not (source / relative).is_file():
+        if not (source / relative).exists():
             raise ValueError('Выбранный файл не попал в безопасную копию')
         # The only mount is an immutable snapshot. Container writes disappear with /work.
         command = [*docker, 'run', '--name', name, '--rm', '--pull=never', '--network=none',

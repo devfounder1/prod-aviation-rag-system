@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 from pathlib import Path
@@ -234,6 +235,8 @@ class AviationRAGApp:
             self.stop_button.visible = self.is_processing
         if hasattr(self, "gost_button"):
             self.gost_button.disabled = self.is_processing
+        if hasattr(self, "project_button"):
+            self.project_button.disabled = self.is_processing
         if not getattr(self, "_has_streamed_text", True) and hasattr(self, "_progress_text"):
             self._progress_text.value = event.detail or self.activity.text.value
             self._progress_ring.visible = self.activity.spinner.visible
@@ -358,6 +361,9 @@ class AviationRAGApp:
         self.folder_picker = ft.FilePicker(on_result=self._on_folder_pick_result)
         self.page.overlay.append(self.folder_picker)
         self._folder_pick_target = None
+        self.project_picker = ft.FilePicker(on_result=self._on_project_folder_result)
+        self.page.overlay.append(self.project_picker)
+        self._project_pick_chat = None
         
         # FilePicker для файлов БОЛЬШЕ НЕ НУЖЕН:
         # прикрепление файлов теперь работает через встроенный браузер _open_file_browser()
@@ -406,6 +412,13 @@ class AviationRAGApp:
             on_click=self._handle_gost_click,
             tooltip="Прикрепите один DOC или DOCX: оформление, просмотр страниц и сохранение новой копии",
         )
+        self.project_button = ft.TextButton(
+            content=ft.Row([brand_icon("files", 20), ft.Text("Открыть проект", size=13)], tight=True, spacing=7),
+            on_click=self._handle_project_click,
+            tooltip="Выбрать папку кода: копия в этом чате, исходная папка не изменяется",
+        )
+        self.project_status = ft.Text('', size=12, color=self.theme['text_secondary'], visible=False,
+                                      max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
 
         self.send_button = icon_button("send", "Отправить сообщение", self._handle_send, primary=True)
         self.stop_button = icon_button("stop", "Остановить ответ", self._handle_cancel_click)
@@ -414,7 +427,8 @@ class AviationRAGApp:
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
-                ft.Row([self.agent_toggle, self.files_button, self.gost_button], spacing=16, wrap=True),
+                ft.Row([self.agent_toggle, self.files_button, self.project_button, self.gost_button], spacing=12, wrap=True),
+                self.project_status,
                 ft.Row([
                     self.mic_button,
                     icon_button("attach", "Прикрепить документ или изображение", self._handle_attach_click),
@@ -538,6 +552,63 @@ class AviationRAGApp:
         logger.debug(f"Клик на кнопку +")
         # Используем встроенный браузер файлов
         self._open_file_browser()
+
+    def _handle_project_click(self, _: Any) -> None:
+        if self.is_processing or self._project_pick_chat is not None:
+            return
+        self._project_pick_chat = self.chat_manager.current_chat_id
+        try:
+            self.project_picker.get_directory_path(dialog_title='Выберите папку проекта для копирования в чат')
+        except Exception as exc:
+            self._project_pick_chat = None
+            self._show_toast(f'Не удалось открыть выбор папки: {exc}')
+
+    def _on_project_folder_result(self, event: ft.FilePickerResultEvent) -> None:
+        chat_id, self._project_pick_chat = self._project_pick_chat, None
+        if (not chat_id or not event.path or self.is_processing or not self._ui_dispatch.active
+                or self.chat_manager.current_chat_id != chat_id):
+            return
+        job = self._jobs.start(chat_id)
+        self.is_processing = True
+        self._set_activity(ActivityEvent('working', 'Копирую и проверяю файлы проекта', 'AGENT'))
+        self.page.update()
+        self._ui_dispatch.run_task(self._import_project_folder, job, Path(event.path))
+
+    async def _import_project_folder(self, job: RequestJob, source: Path) -> None:
+        from file_tools import workspace_for_chat
+        from project_workspace import import_project
+        try:
+            info = await asyncio.to_thread(lambda: import_project(workspace_for_chat(job.chat_id), source, job.token))
+            if self._jobs.is_current(job) and self.chat_manager.current_chat_id == job.chat_id:
+                self.agent_mode = True
+                self.agent_checkbox.value = True
+                self._show_toast(f'Проект «{info.name}»: {info.files} файлов. Пропущено элементов: {info.skipped}. '
+                                 'Работаем с копией; напишите задачу.')
+                await self._refresh_projects(job.chat_id)
+        except Exception as exc:
+            if self._jobs.is_current(job):
+                self._show_toast(f'Проект не загружен: {exc}')
+        finally:
+            if self._jobs.is_current(job):
+                self._jobs.finish(job)
+                self.is_processing = False
+                self._set_activity(ActivityEvent('ready'))
+                self.page.update()
+
+    async def _refresh_projects(self, chat_id: str) -> None:
+        from file_tools import workspace_for_chat
+        from project_workspace import projects
+        try:
+            items = await asyncio.to_thread(lambda: projects(workspace_for_chat(chat_id)))
+        except Exception as exc:
+            if self.chat_manager.current_chat_id == chat_id and self._ui_dispatch.active:
+                self._show_toast(f'Не удалось прочитать список проектов: {exc}')
+            return
+        if self.chat_manager.current_chat_id != chat_id or not self._ui_dispatch.active:
+            return
+        self.project_status.value = 'Проекты чата: ' + ', '.join(f'{p.name} ({p.files} файлов)' for p in items)
+        self.project_status.visible = bool(items)
+        self.page.update()
 
     def _handle_gost_click(self, e: Any) -> None:
         if self.is_processing:
@@ -1159,6 +1230,10 @@ class AviationRAGApp:
                 )
         else:
             self.welcome.visible = True
+        self.project_status.visible = False
+        self._project_pick_chat = None
+        if self.chat_manager.current_chat_id:
+            self._ui_dispatch.run_task(self._refresh_projects, self.chat_manager.current_chat_id)
         self.page.update()
 
     def _add_message_to_ui(self, role, content, attachments=None, sources=None):
