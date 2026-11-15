@@ -405,3 +405,37 @@ write and 1 passed after it. Host originals stayed unchanged. The latest change
 was tested through the worker/tool API and real Docker, not a fresh native GUI
 session; restart the existing desktop process to load it. Private QA artifacts
 remain ignored under eval-results/post-edit-tests and are excluded from Git.
+
+### 2026-11-15 — Unassisted multi-file project benchmark
+
+One fresh request to local qwen2.5:14b used a synthetic nine-file, 135-line Python
+sales-report project with two related production bugs and 12 existing tests.
+The task specified discount/paid-revenue behavior, unchanged public API/tests/tree,
+before/after pytest and delivery to Chat Files, without exact bug locations.
+Six independent acceptance cases were withheld from the agent. The request took
+about 36 seconds; no corrective follow-up or manual candidate repair was used.
+
+Outcome: failed. The model selected an absent sales_report.py and invalid pytest
+paths, then proposed creating a new file rather than changing the existing
+production modules. The QA reviewer rejected that out-of-scope creation under the
+unchanged-structure condition. Rejection ended the request, so this run does not
+establish what would happen if that incorrect write were approved. There were no
+verified writes or output project. The app truthfully reported unsaved output
+and unconfirmed test calls instead of claiming success.
+
+Independent real-Docker checks of the unchanged candidate still show 7 failed /
+5 passed in the public suite and 6 failed in holdout cases. A separate reference
+with only the two known production fixes passes all 18 cases, validating the
+fixture. Original-folder and imported-snapshot SHA-256 values remain unchanged;
+existing tests are intact. Candidate code never ran on the host.
+
+This was a worker/API check with real Ollama and Docker, not a completed native
+GUI flow: the app opened but computer-use clicks were unavailable. A trusted QA
+script imported only the newly authored synthetic fixture and reviewed writes.
+The diagnostic request/answer are saved in a separate local chat. Private reports,
+fixtures and working copies remain ignored under eval-results/project-benchmark
+and agent_workspace. Project support exists, but autonomous path selection and
+dependent tool sequencing remain a demonstrated quality limitation, even on
+this small example; this is not evidence of large-repository reliability.
+Read-only doctor remains ready with intact stores; deterministic retrieval
+recall@1 is 1. No application code changed in this benchmark stage.
