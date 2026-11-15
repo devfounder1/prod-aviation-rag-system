@@ -439,3 +439,90 @@ dependent tool sequencing remain a demonstrated quality limitation, even on
 this small example; this is not evidence of large-repository reliability.
 Read-only doctor remains ready with intact stores; deterministic retrieval
 recall@1 is 1. No application code changed in this benchmark stage.
+
+### 2026-11-15 — Make project tool decisions depend on actual results
+
+The failed benchmark exposed a model-generated batch containing navigation,
+reads, writes and tests whose arguments had all been chosen before any results.
+For requests with imported projects, disable parallel calls and run only the
+first model-selected tool per decision. Every remaining call gets an explicit
+not-executed ToolMessage, preserving complete tool pairs for context compaction.
+The model must choose again after receiving the real result; deferred writes are
+never silently queued or approved. Trusted automatic post-edit suite repeats are
+independent and retain their existing scope and cancellation rules.
+
+ProjectFlow is request-owned and seeded from trusted chat tool metadata, not
+project text. ProjectRead artifacts bind actual displayed ranges to SHA-256.
+Existing-file edits require current-version read coverage; whole replacement or
+append requires full coverage, possibly through adjacent pages. Truncated lines
+do not count. Write receipts invalidate reads for both input/result aliases.
+Errors do not repair guessed paths by basename or change tool arguments. New
+files and general document/chat tasks still use normal permissions and approval.
+Narrow explicit current-user constraints can preserve conventional test paths
+and require a real same-project pytest artifact before changes; quoted examples
+and negated requirements cannot enable these restrictions. Project decisions use
+temperature 0; remove the conflicting instruction to write before studying input.
+
+Intermediate fresh unassisted runs remained incomplete: sequencing alone reached
+real files but proposed appending a test despite the unchanged-tests condition
+(rejected at review). With request constraints, it ran an actual baseline test but
+struggled with paths/escaped Python and reached the 300-second QA timeout without
+a write. Ollama ps then revealed the selected model actually had only 4096 tokens
+of context, despite the separate 16000-character application message budget and
+additional tool schemas. This is a plausible contributor, not proof of a sole
+cause. The existing /v1 interface cannot set num_ctx per call.
+
+Prepare an explicit separate butuz-qwen2.5:14b profile from already-installed
+qwen2.5:14b weights using ollama/Modelfile.agent, without downloads or changing the
+original model. Actual Ollama ps confirms 16384 context and approximately 11 GB
+memory. Runtime never prepares it or changes model selection automatically;
+README and .env.example explain setup and selection. A first 300-second run with
+this profile published pricing.py and actually ran its tests after the write,
+but timed out before completing the task. Independent Docker evaluation found
+9/12 public and 1/6 holdout cases passing: do not count this as success.
+
+Regression validation: 312 offline tests passed, 7 optional tests skipped; strict
+mypy passes all 37 hardened modules. Two prepared-Docker project/post-edit checks
+also pass. Doctor reports intact stores and local readiness; deterministic RAG
+recall@1 remains 1. Private per-run audit logs, fixtures and chat workspaces stay
+ignored. A fresh temperature-0/16k trial with the unchanged task and fixture used
+the application's complete 30-step limit (563 seconds), without the earlier
+five-minute cutoff. It ran all 12 baseline tests at the real project root, then
+repeated invalid edits containing escaped separators and copied line-number
+labels. Syntax checks prevented publication; all 7 public failures and all 6
+holdout failures remained. Clarify the raw-source contract in replace_lines and
+the agent prompt: displayed line numbers are metadata, not replacement source;
+single-line fixes should supply only that line. Do not silently strip labels or
+invent a corrected candidate. Repeat the original task on a fresh copy once more
+with this final tool contract, the same 16k weights and 600-second QA deadline.
+
+Final source-contract trial: one unchanged request on a fresh nine-file fixture,
+no follow-up hints and no manual candidate repair. It completed at the normal
+30-step limit after 552 seconds, rather than the QA deadline. Actual tools read
+README and source, ran baseline pytest, published one reviewed pricing.py copy,
+and ran pytest against the latest project. The final result truthfully reported
+failed post-edit verification and the exhausted step budget. Independent Docker
+checks found 7/12 public and 4/6 withheld tests passing, compared with 5/12 public
+before changes. The implementation reduced discounts but removed discount-range
+validation and retained unreachable old code; reporting.py remained unchanged.
+Repeated escaped/number-prefixed edits of that second module never passed syntax
+validation or opened approval. This is still a failed overall project task, not
+a reliable autonomous repair result or evidence for large-project readiness.
+
+SHA-256 readback confirms all host originals, input-snapshot files and tests are
+unchanged. The complete partial output tree is visible in that diagnostic chat's
+Chat Files; its receipt verifies the one actual mutation. Local evidence is in
+eval-results/project-benchmark-source-contract. Intermediate runs are retained
+and labelled separately; they are development observations, not a statistical
+success-rate evaluation. All used the worker API, local Ollama and real Docker,
+not a newly validated GUI session. A final receipt-format adjustment returns
+the short canonical workspace-relative path instead of a long host/hash path;
+its absolute receipt and GUI approval path remain intact. This adjustment has a
+dedicated regression and the full 312-test run; the long live trial preceded it.
+
+The original .env model selection was preserved. The optional 16k local profile
+is installed for explicit selection; restarting the desktop process is needed
+to load the new agent code. Doctor still reports ready/intact stores. Remaining
+limitations are model code correctness, repetitive malformed tool arguments and
+task completion despite receiving actual errors; path/read guards cannot turn
+these into successful repairs, and the report does not claim they do.

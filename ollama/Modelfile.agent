@@ -1,0 +1,4 @@
+# Explicit local setup only; qwen2.5:14b must already be installed.
+# Reuses its existing weights without changing the original model.
+FROM qwen2.5:14b
+PARAMETER num_ctx 16384

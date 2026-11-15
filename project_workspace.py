@@ -285,6 +285,9 @@ def create_project_tools(root: Path, cancel: dict[str, bool] | None = None) -> l
         active(cancel)
         return project_summary(root) or 'В этом чате нет импортированных проектов.'
 
+    # Trusted request-owned scope, not strings parsed from project/LLM content.
+    list_projects.metadata = {'project_workspace': str(root.resolve()), 'project_ids': [p.id for p in projects(root)]}
+
     @tool
     def project_map(project_id: str, path_prefix: str = '', offset: int = 0, limit: int = 12) -> str:
         """Page through project files. Python files include AST functions/classes/imports, never execution. Other languages show file paths only."""
