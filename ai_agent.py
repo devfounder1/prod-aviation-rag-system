@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import logging
+import uuid
 from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -18,6 +19,8 @@ from answer_prompts import (SEARCH_SYSTEM_PROMPT, document_answer_instruction,
 from config import settings
 from conversation_context import recent_history
 from agent_context import AgentContext, ContextBudgetError
+from agent_verification import (PostEditVerification, verification_requested,
+                                VERIFICATION_INSTRUCTION, VERIFICATION_RETRY)
 
 FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'update_attached_file'}
 logger = logging.getLogger(__name__)
@@ -82,6 +85,7 @@ class LocalAgent:
         detail_repaired = False
         document_context = context
         document_policy_applied = document_answer
+        verification = PostEditVerification(verification_requested(task))
 
         def file_outcome() -> str:
             summary = receipt_summary(receipts) if receipts else 'Файл не сохранён: подтверждённого результата записи нет.'
@@ -90,6 +94,9 @@ class LocalAgent:
                                           'Синтаксис Python проверен; результаты запуска приведены ниже.')
             if failures:
                 summary += '\nПоследние ошибки записи:\n' + '\n'.join(list(failures.values())[-3:])[:1500]
+            check = verification.summary()
+            if check:
+                summary += '\n' + check
             return summary + ('\n\n' + '\n\n'.join(executions) if executions else '')
         model = self.llm.bind_tools(list(available.values()))
         messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + SYSTEM_PROMPT)]
@@ -108,6 +115,8 @@ class LocalAgent:
                 return file_outcome() + '\nИнструменты записи недоступны в этом запросе.'
         if document_answer:
             messages.append(SystemMessage(content=SEARCH_SYSTEM_PROMPT + '\n\n' + document_answer_instruction(task)))
+        if verification.required:
+            messages.append(SystemMessage(content=VERIFICATION_INSTRUCTION))
         window = AgentContext(messages, settings.agent_context_chars)
         for _ in range(self.max_iterations):
             if cancel_flag and cancel_flag.get("cancelled"):
@@ -121,7 +130,27 @@ class LocalAgent:
                 outcome = file_outcome() if mutations_attempted or delivery_required else '\n\n'.join(executions)
                 return (outcome + '\n' if outcome else '') + str(exc)
             response = model.invoke(messages, **options)
+            if cancel_flag and cancel_flag.get('cancelled'):
+                return 'Выполнение отменено.'
             messages.append(response)
+            if ((not isinstance(response, AIMessage) or not response.tool_calls) and mutations_attempted
+                    and verification.retry('run_pytest' in available)):
+                logger.info('Post-edit verification repair=%d', verification.repairs)
+                if on_activity:
+                    on_activity(ActivityEvent('working', 'Готовлю повторную проверку после правки', 'AGENT'))
+                targets = verification.automatic_targets()
+                if targets:
+                    # Repeat only a target this model already executed in this
+                    # request. This host-owned validation step is not new model
+                    # planning, a fabricated result, or permission to run shell.
+                    response = AIMessage(content='', response_metadata={'automatic_post_edit_check': True},
+                        tool_calls=[{'id':uuid.uuid4().hex,'name':'run_pytest','args':{'file_path':target}}
+                                    for target in targets])
+                    messages.append(response)
+                else:
+                    messages.append(SystemMessage(content=VERIFICATION_RETRY))
+                    messages.append(HumanMessage(content=verification.retry_data()))
+                    continue
             if not isinstance(response, AIMessage) or not response.tool_calls:
                 if delivery_required and not receipts and not mutations_attempted:
                     if delivery_repairs < 2:
@@ -178,13 +207,22 @@ class LocalAgent:
                     document_context += '\n\n' + str(tool_message.content)
                 if call['name'] in {'run_python', 'run_pytest'}:
                     executed_verified = executed_verified or isinstance(tool_message.artifact, ExecutionResult)
-                    executions.append(call['name'] + '\n' + (tool_message.artifact.render() if isinstance(tool_message.artifact, ExecutionResult)
+                    label = call['name']
+                    if verification.required and call['name'] == 'run_pytest':
+                        label += ' — после правки' if verification.writes else ' — до правки'
+                    executions.append(label + '\n' + (tool_message.artifact.render() if isinstance(tool_message.artifact, ExecutionResult)
                                       else 'Запуск не подтверждён: ' + str(tool_message.content)))
+                    if call['name'] == 'run_pytest':
+                        if isinstance(tool_message.artifact, ExecutionResult):
+                            verification.executed(tool_message.artifact, str(call['args'].get('file_path', '')))
+                        else:
+                            verification.execution_error(str(tool_message.content))
                 if call['name'] in FILE_MUTATIONS:
                     mutations_attempted = True
                     target = str(call['args'].get('file_path', call['args'].get('file_name', '')))
                     if isinstance(tool_message.artifact, FileReceipt):
                         receipts.append(tool_message.artifact)
+                        verification.written(tool_message.artifact)
                         # A corrected attempt supersedes earlier validation errors.
                         failures.pop(target, None)
                     else:

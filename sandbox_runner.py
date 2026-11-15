@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -33,10 +34,15 @@ class ExecutionResult:
     stdout: str
     stderr: str
     seconds: float
+    kind: str = ''
+    source_root: str = ''
+    target_path: str = ''
+    snapshot_hashes: tuple[tuple[str, str], ...] = ()
 
     def render(self) -> str:
+        target = f'\nЦель проверки: {self.target_path}' if self.target_path else ''
         return (f'Песочница: {self.status}; код завершения: {self.exit_code}; '
-                f'время: {self.seconds:.2f} с\nstdout:\n{self.stdout}\nstderr:\n{self.stderr}')
+                f'время: {self.seconds:.2f} с{target}\nstdout:\n{self.stdout}\nstderr:\n{self.stderr}')
 
 
 def docker_command() -> list[str]:
@@ -104,6 +110,8 @@ def execute(root: Path, file_path: str, tests: bool = False,
         source = Path(directory)
         source.chmod(0o755)
         snapshot(root, source)
+        fingerprints = tuple((p.relative_to(source).as_posix(), hashlib.sha256(p.read_bytes()).hexdigest())
+                             for p in sorted(source.rglob('*')) if p.is_file())
         if not (source / relative).exists():
             raise ValueError('Выбранный файл не попал в безопасную копию')
         # The only mount is an immutable snapshot. Container writes disappear with /work.
@@ -166,4 +174,5 @@ def execute(root: Path, file_path: str, tests: bool = False,
         if status == 'завершено' and process.returncode != 0:
             status = 'ошибка выполнения'
         return ExecutionResult(status, process.returncode, buffers[0].decode('utf-8', 'replace'),
-                               buffers[1].decode('utf-8', 'replace'), time.monotonic() - started)
+                               buffers[1].decode('utf-8', 'replace'), time.monotonic() - started,
+                               'pytest' if tests else 'python', str(root), relative.as_posix(), fingerprints)

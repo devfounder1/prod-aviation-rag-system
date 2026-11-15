@@ -356,3 +356,52 @@ The app remains open on the diagnostic chat's file panel for inspection. Private
 GUI evidence and synthetic workspaces are ignored under eval-results/agent_workspace
 and are not committed. No cloud requests, model downloads, host execution of
 generated code or bypass of write approval were used.
+
+### 2026-11-15 — Verify the latest edit without another user reminder
+
+The GUI investigation showed that a verified FileReceipt was enough to end a
+fix-and-check request even when its only pytest result preceded the write. Add
+request-owned PostEditVerification outside the compacted model history. It
+recognizes current explicit code-edit plus runtime-verification requests, excludes
+quoted examples, prohibitions, filename words and syntax-only tasks, and leaves
+general document/file workflows unchanged.
+
+Every relevant successful write invalidates earlier verification. ExecutionResult
+now carries trusted pytest/python kind, actual copied-project root, selected test
+target and input SHA-256 fingerprints. Only pytest artifacts matching current
+written bytes and project scope count. Separate earlier test files must all be
+repeated, or covered by a containing suite; another project or a smaller/different
+suite cannot satisfy completion. Runtime reports identify their target; fix-and-
+check outcomes distinguish pre-edit and post-edit runs.
+
+When the model tries to finish too early, the host may repeat only the same
+model-selected, actually executed test target through the existing request-owned
+run_pytest tool. This validation step is explicitly tagged in AI message metadata
+and uses the same cancellation/isolation path; it cannot choose new commands,
+run shell/host code, install packages or skip GUI write approval. Unknown targets
+use bounded model repair. A request has at most two such completion repairs;
+step/context budgets, cancellation and rejected writes still stop work. Missing
+runtime/tools, invalid paths, exhausted attempts and failing/unfinished tests
+produce explicit warnings with actual results, never a claim of passing tests.
+
+Validation: 299 offline tests passed, 7 optional checks skipped; strict mypy passed
+all 36 hardened modules and desktop integration compiles. Regression coverage
+includes the original pretest/write/prose sequence, multiple edits in one tool
+batch, several projects/suites, mismatched hashes, bare/unrelated execution
+artifacts, syntax checks, missing Docker/tools, cancellation, refusal and limits.
+The prepared local Docker passed four boundary/project checks, including a real
+failed test, approved correction, premature model prose and automatic successful
+rerun without a second model tool decision. Targeted live checks were repeated
+after the final suite-coverage change. Doctor is ready with intact stores;
+deterministic retrieval recall@1 remains 1.
+
+Real qwen2.5:14b was checked using synthetic isolated QA projects. A broad request
+still exposed a model path-selection mistake: it edited a different calc.py,
+repeated tests stayed red and the final report correctly showed failure. This is
+not repaired by a completion guard and remains a code-quality limitation. With
+explicit file/suite paths, one request completed in about 31 seconds with one
+approval, the correct addition fix, an unchanged test file, 1 failed before the
+write and 1 passed after it. Host originals stayed unchanged. The latest change
+was tested through the worker/tool API and real Docker, not a fresh native GUI
+session; restart the existing desktop process to load it. Private QA artifacts
+remain ignored under eval-results/post-edit-tests and are excluded from Git.

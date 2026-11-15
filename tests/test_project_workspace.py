@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
@@ -214,7 +215,12 @@ def test_agent_can_repair_failed_project_test_and_report_actual_result(
     import sandbox_runner
     executions = iter([ExecutionResult('ошибка выполнения',1,'','AssertionError',0.1),
                        ExecutionResult('завершено',0,'1 passed','',0.1)])
-    monkeypatch.setattr(sandbox_runner, 'execute', lambda *a,**k: next(executions))
+    def execute(*args: Any, **kwargs: Any) -> ExecutionResult:
+        base = root / (info.result_path if (root / info.result_path).exists() else info.input_path)
+        return replace(next(executions), kind='pytest', source_root=str(base), target_path='tests',
+                       snapshot_hashes=tuple((p.relative_to(base).as_posix(), hashlib.sha256(p.read_bytes()).hexdigest())
+                                             for p in sorted(base.rglob('*')) if p.is_file()))
+    monkeypatch.setattr(sandbox_runner, 'execute', execute)
     path = f'{info.input_path}/package/calc.py'
     test_path = f'{info.input_path}/tests'
     calls = [
