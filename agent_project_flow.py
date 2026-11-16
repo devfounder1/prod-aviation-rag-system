@@ -90,6 +90,10 @@ class ProjectFlow:
         path = (self.root / str(args['file_path'])).resolve()
         key = self.key(path)
         if not key:
+            if name == 'run_pytest' and path == self.root.resolve():
+                return ('Запуск не выполнен: это корень чата с входными и выходными копиями, а не корень проекта. '
+                        'Выбери точный путь attached/projects/<id> или results/projects/<id> из list_projects/project_map. '
+                        'Путь не исправлялся автоматически.')
             # A bare imported ID is not a workspace-relative file path. Never
             # guess its meaning, choose by basename, or rewrite the arguments.
             try:
@@ -100,7 +104,7 @@ class ProjectFlow:
                 return 'Путь не выполнен: ID проекта не является путём. Скопируй полный путь из project_map; не угадывай его.'
             return None  # General chat files/documents remain supported.
         project_id, *tail = key.split('/')
-        if name in {'write_file', 'replace_lines', 'append_to_file'}:
+        if name in {'write_file', 'replace_lines', 'replace_text', 'append_to_file'}:
             target = Path(*tail)
             is_test = (any(p in {'test', 'tests'} for p in target.parts)
                        or target.name.startswith('test_') or target.stem.endswith('_test')
@@ -122,7 +126,7 @@ class ProjectFlow:
             if name == 'write_file':  # New files are legitimate, subject to approval.
                 return None
             return 'Путь не выполнен: такого файла/каталога в проекте нет. Получи project_map/search_project и используй точный возвращённый путь.'
-        if name not in {'write_file', 'replace_lines', 'append_to_file'} or not current.is_file():
+        if name not in {'write_file', 'replace_lines', 'replace_text', 'append_to_file'} or not current.is_file():
             return None
         if current.stat().st_size > 2_000_000:
             return 'Правка не выполнена: файл превышает лимит 2 MB.'
@@ -131,6 +135,16 @@ class ProjectFlow:
         reads = [r for r in self.reads.get(key, []) if r.sha256 == digest]
         if name == 'replace_lines':
             start, end = args.get('start_line', 0), args.get('end_line', 0)
+        elif name == 'replace_text':
+            content = raw.decode('utf-8')
+            old = str(args.get('old_text', ''))
+            if not old or content.count(old) != 1:
+                self.reads.pop(key, None)
+                return ('Правка не выполнена: old_text должен точно и однозначно совпадать с исходным текстом. '
+                        'Перечитай read_file и скопируй небольшой фрагмент без номеров строк. Подтверждение не запрашивалось.')
+            offset = content.index(old)
+            start = content[:offset].count('\n') + 1
+            end = start + old.count('\n') - int(old.endswith('\n'))
         else:
             start, end = 1, len(raw.decode('utf-8').splitlines())
         cursor = start
@@ -139,7 +153,7 @@ class ProjectFlow:
                 cursor = right + 1
         if reads and start >= 1 and end >= start and cursor > end:
             return None
-        if name != 'replace_lines' and any(r.complete for r in reads):
+        if name not in {'replace_lines', 'replace_text'} and any(r.complete for r in reads):
             return None
         return ('Правка не выполнена: сначала прочитай актуальные строки этого файла через read_file_lines '
                 '(для полной перезаписи/добавления прочитай весь файл). Затем выбери правку по полученному содержимому. '

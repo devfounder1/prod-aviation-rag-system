@@ -282,7 +282,7 @@ def test_picker_captures_chat_and_async_import_is_visible(
 def test_live_project_tests_use_project_root_and_latest_copy(project: tuple[Path, Path, pw.ProjectInfo]) -> None:
     source, root, info = project
     failed = execute(root, f'{info.input_path}/tests', tests=True)
-    assert failed.exit_code == 1 and 'AssertionError' in failed.stdout
+    assert failed.exit_code == 1 and 'tests/test_calc.py' in failed.stdout and 'assert -1 == 5' in failed.stdout
     tools = {t.name: t for t in file_tools.create_file_tools('a',approve=lambda _:True)}
     tools['replace_lines'].invoke({'file_path':f'{info.input_path}/package/calc.py',
         'start_line':4,'end_line':4,'new_content':'    return a+b\n'})

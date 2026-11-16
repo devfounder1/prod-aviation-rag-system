@@ -526,3 +526,105 @@ to load the new agent code. Doctor still reports ready/intact stores. Remaining
 limitations are model code correctness, repetitive malformed tool arguments and
 task completion despite receiving actual errors; path/read guards cannot turn
 these into successful repairs, and the report does not claim they do.
+
+
+## 2026-11-16 — exact project repair decisions and test feedback
+
+Add replace_text: one unique literal source match, current read coverage, Python
+syntax validation, full exact GUI approval, atomic project-copy publication and
+verified FileReceipt. Preserve unrelated bytes, including CRLF. The repair-mode
+schema requires a single-line/expression old_text anchor, avoiding indentation
+reconstruction for a multi-line old block; universal file tools keep their
+normal multi-line contract. No fuzzy edits, source-label stripping, Markdown
+execution or weakened escape decoding.
+
+For explicit code repair plus runtime verification on imported projects, use a
+small tool surface and request-owned ProjectRepair state. Each decision keeps
+the complete current request, actual navigation/read evidence with current
+hashes, recent actual actions and the last complete tool exchange. Old rejected
+assistant proposals are not replayed. Reply to all deferred call IDs, placing
+the actual executed result last. Discover project IDs once. After source-format
+errors require a fresh typed read; at most three metadata-labelled automatic
+refreshes can repeat exactly a successful model-selected read. Never choose a
+new file or patch in host recovery logic.
+
+Keep hash-current verified saved Python source as WRITE-result evidence outside
+context compaction. It does not grant permission for another edit; ProjectFlow
+still invalidates the prior read on a receipt. Preserve real full test artifacts;
+shorten model feedback with the failure summary, not only its beginning. Require
+a current actual project-root pytest for whole-project requests; narrow explicit
+scopes remain narrow. Reject chat-root pytest rather than collecting input and
+output copies. In a single-project repair, hide/reject repeated execution of an
+already failed unchanged root version until a saved edit. Do not apply this to
+multi-project or explicitly narrow requests.
+
+Use native Ollama tool_choice=required while read recovery, failed tests or a
+missing/stale requested scope remains. Return to auto after actual evidence
+permits completion. A local /v1 smoke call confirmed required tool selection is
+supported. Before the next dependent action after writing, the existing trusted
+post-edit validator may repeat ONLY model-selected, actually executed targets;
+reply that the original model call was not executed or queued. Broader/new test
+targets remain model decisions. Preserve ordinary rejection/cancellation/bounds.
+Tool-free failure analysis by the same selected model is optional, bounded and
+triggered after a premature finish. Its hypotheses are not correctness proof.
+
+Development trials are retained separately under ignored project-repair-v1
+through v21 directories. They are iterative observations, not a success-rate
+study. V8 repaired a fresh nine-file/135-line fixture with two correct small
+edits: 12 public and six withheld cases passed in independent real Docker.
+Subsequent repeats still exposed malformed old blocks, speculative rounding,
+repeated unchanged tests and premature prose-only endings. A trial of mandatory
+model patch criticism incorrectly rejected a valid paid-status fix in v17;
+remove that veto. Same-model opinion cannot replace approvals or actual tests.
+
+V18 with native required tools passed all 12 original public cases and the six
+original withheld cases, but manual review found an invented completed status.
+A seventh independent acceptance case exposed that defect. V19 uses the SAME
+request and production source, with an added ordinary project test that all
+non-paid external statuses are excluded; no line/file fix hints or manual
+candidate edits. The strengthened fixture has 13 public cases. The 30-step v19
+trial remained incomplete: 9/13 public and 4/7 independent cases passed. Set the
+explicit default AGENT_MAX_STEPS to 60 (existing environment overrides still win,
+range remains 5–60). Do not conflate this with the earlier 12-case fixture.
+
+V20, using the larger bounded budget, made both correct production edits;
+13 public and seven independent acceptance cases passed. However, the agent
+selected only the tests directory and the whole-project completion guard still
+reported the missing root check. Supply the canonical root from actual receipts
+or execution metadata in the pending-scope ledger, rather than only a project
+ID. This is navigation evidence, not a host-selected test command. Permit up to
+six premature-finish repairs, still within the overall step budget.
+
+V21 is a fresh import of the same strengthened fixture with the SAME request,
+no follow-up hints or manual candidate edits, and the final implementation.
+In 316 seconds, the agent read the project, selected and ran root pytest before
+editing (eight failures/five passes), made two approved literal changes, and
+ran root pytest after the latest change: 13 passed. The existing request-owned
+validator also repeated an already model-selected root scope. Independent real
+Docker validation passed all 13 public and seven withheld acceptance cases.
+Only pricing.py's discount sign and reporting.py's paid-only condition changed;
+validation, Decimal/HALF_UP rounding, API and other source remain intact. The
+original folder, imported snapshot and existing tests have identical SHA-256
+hashes to their pre-import versions. The complete nine-file output is present
+under that chat's results/projects path. Evidence: ignored
+eval-results/project-repair-v21/{run-metadata,model-report,tool-audit,summary}.json
+and public/holdout-pytest.txt; the local Russian report links the output folder.
+These successful small-fixture checks do not erase the failed intermediate
+trials or establish a general model success rate.
+
+Live checks use the pre-existing butuz-qwen2.5:14b profile with 16384-token context
+and the same local Qwen weights, plus the prepared offline Docker sandbox. No
+model/dependency/image downloads; no candidate code execution on the host. QA
+approval callbacks allow only the synthetic production modules. Host originals,
+input snapshots and existing tests are hash checked. Worker/API tests do not
+establish a new native GUI pass. The original .env selection stays unchanged;
+the normal 4k Ollama model context is not the validated 16k profile, which the
+user selects explicitly. Small-fixture results do not prove reliable repair of
+arbitrary large projects.
+
+Implementation checks: 347 offline tests pass, eight optional tests skipped;
+strict mypy passes all 38 hardened modules. Four prepared-Docker execution,
+project-root/latest-copy and automatic-post-edit tests pass. Syntax compilation,
+read-only doctor (ready/intact SQLite and Chroma), and deterministic RAG recall@1
+(1.0) pass. PyPDF2 emits its existing deprecation warning. Runtime QA data,
+chat histories, fixture copies and test output stay excluded from Git.

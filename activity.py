@@ -22,7 +22,8 @@ def tool_activity(name: str) -> ActivityEvent:
     details = {
         'read_file': 'Читаю файл', 'list_directory': 'Проверяю файлы чата',
         'write_file': 'Готовлю файл', 'append_to_file': 'Дополняю файл',
-        'replace_lines': 'Готовлю изменения', 'update_attached_file': 'Готовлю изменение оригинала',
+        'replace_lines': 'Готовлю изменения', 'replace_text': 'Готовлю точечную правку',
+        'update_attached_file': 'Готовлю изменение оригинала',
         'read_file_lines': 'Читаю нужные строки', 'find_in_file': 'Ищу внутри файла',
         'get_file_structure': 'Изучаю структуру файла',
         'list_projects': 'Проверяю проекты чата', 'project_map': 'Изучаю карту проекта',

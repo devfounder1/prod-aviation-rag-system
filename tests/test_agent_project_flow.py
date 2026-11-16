@@ -46,6 +46,7 @@ def test_dependency_batch_is_not_executed_until_model_sees_actual_result(setup: 
             results = {m.tool_call_id: m for m in messages if isinstance(m,ToolMessage)}
             assert base+'/calc.py' in results['map'].content
             assert 'НЕ ВЫПОЛНЕНО' in results['premature'].content
+            assert isinstance(messages[-1],ToolMessage) and messages[-1].tool_call_id=='map'
             assert not (root/base.replace('attached/', 'results/')).exists()
             return call('read_file_lines',file_path=base+'/calc.py',start_line=1,end_line=2)
         if step == 3:

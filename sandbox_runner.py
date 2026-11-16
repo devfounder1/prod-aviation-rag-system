@@ -123,7 +123,7 @@ def execute(root: Path, file_path: str, tests: bool = False,
                    '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777',
                    '--mount', f'type=bind,src={source},dst=/input,readonly',
                    '--workdir=/work', '--entrypoint=python', image_id, '-I', '-c', BOOT,
-                   'python', *(['-m', 'pytest', '-q', '-p', 'no:cacheprovider'] if tests else ['-u']), './' + str(relative)]
+                   'python', *(['-m', 'pytest', '-q', '--tb=short', '-p', 'no:cacheprovider'] if tests else ['-u']), './' + str(relative)]
         if cancel and cancel.get('cancelled'):
             return ExecutionResult('отменено', None, '', '', time.monotonic() - started)
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)

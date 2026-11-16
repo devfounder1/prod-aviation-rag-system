@@ -290,9 +290,19 @@ def create_project_tools(root: Path, cancel: dict[str, bool] | None = None) -> l
 
     @tool
     def project_map(project_id: str, path_prefix: str = '', offset: int = 0, limit: int = 12) -> str:
-        """Page through project files. Python files include AST functions/classes/imports, never execution. Other languages show file paths only."""
+        """Page through project files and Python AST without execution.
+
+        project_id is the ID from list_projects. path_prefix is relative to that PROJECT root:
+        use '' for all files or e.g. 'src/' for a subfolder. Never pass attached/projects/ or results/projects/ here.
+        File paths in the result are full workspace-relative paths for read_file/replace_text/run_pytest.
+        """
         if offset < 0 or not 1 <= limit <= 25:
             raise ValueError('offset >= 0; limit от 1 до 25')
+        workspace_prefixes = (f'attached/projects/{project_id}', f'results/projects/{project_id}', project_id)
+        if (path_prefix.startswith('/') or '..' in Path(path_prefix).parts or any(
+                path_prefix == prefix or path_prefix.startswith(prefix + '/') for prefix in workspace_prefixes)):
+            raise ValueError("path_prefix is project-relative: use '' for the whole map, or a subfolder such as 'src/'. "
+                             'The project_id already selects the project; do not repeat its workspace path.')
         selected = [(p, r) for p, r in files(project_id) if r.as_posix().split(f'{project_id}/', 1)[-1].startswith(path_prefix)]
         lines = [f'UNTRUSTED PROJECT MAP: {len(selected)} файлов; страница с {offset}, лимит {limit}.']
         for path, relative in selected[offset:offset + limit]:

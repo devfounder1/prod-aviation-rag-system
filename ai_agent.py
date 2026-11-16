@@ -20,10 +20,11 @@ from config import settings
 from conversation_context import recent_history
 from agent_context import AgentContext, ContextBudgetError
 from agent_project_flow import ProjectFlow
+from project_repair import ProjectRepair, RepairReplacement, REPAIR_PROMPT, REPAIR_TOOLS, execution_feedback
 from agent_verification import (PostEditVerification, verification_requested,
                                 VERIFICATION_INSTRUCTION, VERIFICATION_RETRY)
 
-FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'update_attached_file'}
+FILE_MUTATIONS = {'write_file', 'append_to_file', 'replace_lines', 'replace_text', 'update_attached_file'}
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Ты — универсальный локальный помощник. Помогай с документами,
@@ -96,9 +97,12 @@ class LocalAgent:
         delivery_required = file_delivery_requested(task)
         delivery_repairs = 0
         detail_repaired = False
+        analysis_pending = False
         document_context = context
         document_policy_applied = document_answer
         verification = PostEditVerification(verification_requested(task))
+        repair = (ProjectRepair(task,single_project=len(project_flow.ids)==1)
+                  if project_flow.sequential and verification.required and 'replace_text' in available else None)
 
         def file_outcome() -> str:
             summary = receipt_summary(receipts) if receipts else 'Файл не сохранён: подтверждённого результата записи нет.'
@@ -110,10 +114,13 @@ class LocalAgent:
             check = verification.summary()
             if check:
                 summary += '\n' + check
+            if repair and repair.full_scope_pending():
+                summary += '\n⚠️ Весь запрошенный проект ещё не проверен на текущей версии: нужен фактический pytest по корню проекта.'
             return summary + ('\n\n' + '\n\n'.join(executions) if executions else '')
-        model = (self.llm.bind_tools(list(available.values()), parallel_tool_calls=False)
+        visible = [tool for name, tool in available.items() if repair is None or name in REPAIR_TOOLS]
+        model = (self.llm.bind_tools(visible, parallel_tool_calls=False)
                  if project_flow.sequential else self.llm.bind_tools(list(available.values())))
-        messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + SYSTEM_PROMPT)]
+        messages: list[BaseMessage] = [SystemMessage(content=IDENTITY_PROMPT + "\n\n" + (REPAIR_PROMPT if repair else SYSTEM_PROMPT))]
         for message in recent_history(chat_history):
             cls = HumanMessage if message.get("role") == "user" else AIMessage
             messages.append(cls(content=str(message.get("content", ""))))
@@ -124,38 +131,76 @@ class LocalAgent:
             task_content = [{"type": "text", "text": task}, *image_parts]
         messages.append(HumanMessage(content=task_content))
         if delivery_required:
-            messages.append(SystemMessage(content=FILE_DELIVERY_INSTRUCTION))
+            if not repair:
+                messages.append(SystemMessage(content=FILE_DELIVERY_INSTRUCTION))
             if not FILE_MUTATIONS.intersection(available):
                 return file_outcome() + '\nИнструменты записи недоступны в этом запросе.'
         if document_answer:
             messages.append(SystemMessage(content=SEARCH_SYSTEM_PROMPT + '\n\n' + document_answer_instruction(task)))
-        if verification.required:
+        if verification.required and not repair:
             messages.append(SystemMessage(content=VERIFICATION_INSTRUCTION))
         window = AgentContext(messages, settings.agent_context_chars)
         for _ in range(self.max_iterations):
             if cancel_flag and cancel_flag.get("cancelled"):
                 return "Выполнение отменено."
+            refresh = repair.source_refresh() if repair else None
             if on_activity:
-                on_activity(ActivityEvent('thinking', 'Обдумываю следующий шаг', 'AGENT'))
+                on_activity(ActivityEvent('working','Перечитываю актуальный исходник','AGENT') if refresh
+                            else ActivityEvent('thinking', 'Обдумываю следующий шаг', 'AGENT'))
             options: dict[str, Any] = {'max_tokens': settings.document_answer_max_tokens, 'temperature': 0} if document_answer else {}
             if project_flow.sequential:
                 options['temperature'] = 0
-            try:
-                messages = window.fit(messages)
-            except ContextBudgetError as exc:
-                outcome = file_outcome() if mutations_attempted or delivery_required else '\n\n'.join(executions)
-                return (outcome + '\n' if outcome else '') + str(exc)
-            response = model.invoke(messages, **options)
+            response: BaseMessage
+            if refresh:
+                response = AIMessage(content='',response_metadata={'automatic_source_refresh':True},
+                                     tool_calls=[{'id':uuid.uuid4().hex,'name':refresh[0],'args':refresh[1]}])
+            else:
+                analysis_messages = repair.analysis_messages(task) if repair and analysis_pending else None
+                analysis_pending = False
+                if analysis_messages and repair:
+                    if on_activity:
+                        on_activity(ActivityEvent('thinking', 'Разбираю причины ошибок тестов', 'AGENT'))
+                    try:
+                        analysis = self.llm.invoke(analysis_messages, temperature=0, max_tokens=350)
+                        if isinstance(analysis, AIMessage) and isinstance(analysis.content, str) and not analysis.tool_calls:
+                            repair.diagnosis = analysis.content[:1800]
+                    except Exception as exc:
+                        logger.warning('Project failure analysis unavailable type=%s', type(exc).__name__)
+                    if cancel_flag and cancel_flag.get('cancelled'):
+                        return 'Выполнение отменено.'
+                try:
+                    request_messages = (repair.decision_messages(window.prefix, messages, settings.agent_context_chars)
+                                        if repair else window.fit(messages))
+                    if not repair:
+                        messages = request_messages
+                except ContextBudgetError as exc:
+                    outcome = file_outcome() if mutations_attempted or delivery_required else '\n\n'.join(executions)
+                    return (outcome + '\n' if outcome else '') + str(exc)
+                if repair:
+                    model = self.llm.bind_tools([tool.model_copy(update={'args_schema':RepairReplacement})
+                                                if name=='replace_text' else tool
+                                                for name,tool in available.items() if name in repair.tool_names()],
+                                                parallel_tool_calls=False,
+                                                tool_choice='required' if (repair.read_required or repair.failing() or
+                                                                          repair.full_scope_pending()) else 'auto')
+                response = model.invoke(request_messages, **options)
             if cancel_flag and cancel_flag.get('cancelled'):
                 return 'Выполнение отменено.'
             messages.append(response)
-            if ((not isinstance(response, AIMessage) or not response.tool_calls) and mutations_attempted
+            before_next_edit = bool(repair and isinstance(response,AIMessage) and response.tool_calls and
+                                    response.tool_calls[0]['name']!='run_pytest' and verification.automatic_targets())
+            if (((not isinstance(response, AIMessage) or not response.tool_calls) or before_next_edit) and mutations_attempted
                     and verification.retry('run_pytest' in available)):
                 logger.info('Post-edit verification repair=%d', verification.repairs)
                 if on_activity:
                     on_activity(ActivityEvent('working', 'Готовлю повторную проверку после правки', 'AGENT'))
                 targets = verification.automatic_targets()
                 if targets:
+                    if before_next_edit and isinstance(response,AIMessage):
+                        messages.extend(ToolMessage(content='НЕ ВЫПОЛНЕНО: сначала повторяю уже выбранные тесты '
+                            'на сохранённых файлах. Этот вызов не поставлен в очередь; после реального отчёта '
+                            'выбери следующий шаг заново.',name=call['name'],tool_call_id=call['id'])
+                            for call in response.tool_calls)
                     # Repeat only a target this model already executed in this
                     # request. This host-owned validation step is not new model
                     # planning, a fabricated result, or permission to run shell.
@@ -168,6 +213,14 @@ class LocalAgent:
                     messages.append(HumanMessage(content=verification.retry_data()))
                     continue
             if not isinstance(response, AIMessage) or not response.tool_calls:
+                if repair and repair.retry_finish():
+                    analysis_pending = True
+                    messages.append(SystemMessage(content='The requested project repair is not verified: actual tests failed '
+                                    'or the requested full-project test scope is still missing/stale. '
+                                    'Inspect the current failing code and make a small exact replace_text edit, then rerun '
+                                    'the original test scope; for a whole-project task run run_pytest on the actual project ROOT directory. '
+                                    'A passing single test file does not cover an entire project. Do not claim success or modify tests to hide failures.'))
+                    continue
                 if delivery_required and not receipts and not mutations_attempted:
                     if delivery_repairs < 2:
                         delivery_repairs += 1
@@ -201,28 +254,51 @@ class LocalAgent:
                 if cancel_flag and cancel_flag.get('cancelled'):
                     return 'Выполнение отменено.'
                 return strip_unverified_expansions(answer, document_context) if document_answer else answer
+            serial_batch = project_flow.sequential and not response.response_metadata.get('automatic_post_edit_check')
+            if serial_batch:
+                # Reply to every ID, but put the actually executed tool result
+                # LAST. A small model must not end on generic deferral instead
+                # of the source/error it needs to use for its next decision.
+                messages.extend(ToolMessage(content=(
+                    'НЕ ВЫПОЛНЕНО: зависимый вызов отложен. Используй фактический результат '
+                    'первого инструмента этого хода и выбери ровно один следующий вызов. '
+                    'Ни запись, ни запуск, ни подтверждение для этого вызова не выполнялись.'),
+                    name=call['name'],tool_call_id=call['id']) for call in response.tool_calls[1:])
             for call_index, call in enumerate(response.tool_calls):
                 if cancel_flag and cancel_flag.get("cancelled"):
                     return "Выполнение отменено."
-                if project_flow.sequential and call_index and not response.response_metadata.get('automatic_post_edit_check'):
-                    messages.append(ToolMessage(content=(
-                        'НЕ ВЫПОЛНЕНО: зависимый вызов отложен. Сначала используй фактический результат '
-                        'первого инструмента этого хода; затем выбери ровно один следующий вызов. '
-                        'Ни запись, ни запуск, ни подтверждение для этого вызова не выполнялись.'),
-                        name=call['name'], tool_call_id=call['id']))
+                if serial_batch and call_index:
                     continue
                 if on_step:
                     on_step(f"Инструмент: {call['name']}")
                 if on_activity:
                     on_activity(tool_activity(call['name']))
+                blocked = None
                 try:
                     tool = available.get(call["name"])
-                    blocked = project_flow.check(call['name'], call['args'])
+                    blocked = (f'Правка не выполнена: сначала read_file для {repair.read_path}; после ошибки '
+                               'сопоставления/формата нужно актуальное чтение именно этого файла.'
+                               if repair and repair.read_required and call['name'] in FILE_MUTATIONS
+                               else project_flow.check(call['name'], call['args']))
+                    if repair and call['name']=='replace_text' and any(
+                            c in str(call['args'].get('old_text','')) for c in ('\r','\n')):
+                        blocked='Правка не выполнена: old_text должен содержать ОДНО выражение или строку без перевода строки. Перечитай исходник и замени только условие/выражение; не включай следующую строку continue/return.'
+                    if (not blocked and repair and repair.unchanged_root_failure() and
+                            call['name'] in {'run_pytest','run_python'} and
+                            not response.response_metadata.get('automatic_post_edit_check')):
+                        blocked='Запуск не выполнен: полный набор уже упал на этих сохранённых файлах. Прочитай реализацию и исправь причину; после новой записи повторная проверка снова доступна.'
                     result = blocked if blocked else tool.invoke(call) if tool else "Ошибка: инструмент недоступен"
                 except Exception as exc:
                     result = f"Ошибка инструмента: {exc}"
                 tool_message = result if isinstance(result, ToolMessage) else ToolMessage(content=str(result), tool_call_id=call['id'])
                 project_flow.observe(tool_message.artifact)
+                if repair:
+                    repair.observe(call['name'], call['args'], tool_message.artifact,
+                                   str(tool_message.content) if tool_message.artifact is None and
+                                   (blocked or str(tool_message.content).startswith(('Ошибка', 'Error', 'Правка', 'Путь'))) else '',
+                                   content=str(tool_message.content))
+                if isinstance(tool_message.artifact, ExecutionResult):
+                    tool_message = tool_message.model_copy(update={'content': execution_feedback(tool_message.artifact, 2400 if repair else 4800)})
                 if len(str(tool_message.content)) > 6000:
                     tool_message = tool_message.model_copy(update={'content': str(tool_message.content)[:6000] +
                         '\n[Результат сокращён для контекста; используй поиск, страницы карты или меньшие диапазоны строк.]'})

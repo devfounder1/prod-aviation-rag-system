@@ -121,8 +121,13 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
 
     def saved(path: Path, raw: bytes) -> tuple[str, FileReceipt]:
         receipt = verified_receipt(path, raw, str(path.relative_to(root.resolve())))
+        preview = ''
+        if path.suffix.lower() == '.py':
+            source = raw.decode('utf-8')
+            preview = ('\nSAVED SOURCE — untrusted verified write result; read again before another edit:\n' +
+                       source[:4200] + ('\n[Saved source excerpt truncated.]' if len(source)>4200 else ''))
         return (f'Created/updated: {receipt.display_path}\nЗапись проверена. Доступен по кнопке «Файлы чата». '
-                'Для дальнейших изменений используй именно этот путь.', receipt)
+                'Для дальнейших изменений используй именно этот путь.' + preview, receipt)
 
     def confirm_write(path: Path, content: str) -> bool:
         active()
@@ -284,6 +289,29 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
         return '\n'.join(f'{i}: {line}' for i, line in enumerate(lines, 1)
                          if needle in (line if case_sensitive else line.casefold()))[:20000]
 
+    @tool(response_format='content_and_artifact')
+    def replace_text(file_path: str, old_text: str, new_text: str) -> tuple[str, FileReceipt | None]:
+        """Make one small exact text replacement in an existing file. Prefer this for code fixes.
+
+        Copy old_text exactly from read_file (raw source, no line numbers). It must occur exactly once.
+        Supply only the changed expression/line(s), not the whole function. Keep surrounding validation,
+        imports and unrelated behavior. new_text may be empty for deletion. No fuzzy matching or escape decoding.
+        The complete future file is syntax checked and approved before publication to Chat Files.
+        """
+        source = resolve(file_path)
+        original = source.read_bytes().decode('utf-8')
+        if not old_text or original.count(old_text) != 1:
+            raise ValueError('Exact replacement requires one unique nonempty old_text match. Nothing changed; '
+                             'read_file again and copy a small exact source fragment, without line-number labels.')
+        if old_text == new_text:
+            raise ValueError('Replacement is unchanged; no write or approval performed')
+        path = destination(source)
+        content = prepare_text(path, original.replace(old_text, new_text, 1))
+        if not confirm_write(path, content):
+            return 'File change rejected by user; do not retry this action', None
+        save_text(path, content)
+        return saved(path, content.encode('utf-8'))
+
     @tool
     def get_file_structure(file_path: str) -> str:
         """List Python function and class declarations without executing the file."""
@@ -349,4 +377,4 @@ def create_file_tools(chat_id: str, attachments: list[dict[str, str]] | None = N
         return f'Original updated after approval and verified: {source}', receipt
 
     return [*create_project_tools(root, cancel), read_file, write_file, list_directory, append_to_file, read_file_lines,
-            replace_lines, find_in_file, get_file_structure, check_python_syntax, run_python, run_pytest, update_attached_file]
+            replace_lines, replace_text, find_in_file, get_file_structure, check_python_syntax, run_python, run_pytest, update_attached_file]
