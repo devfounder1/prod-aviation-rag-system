@@ -697,3 +697,44 @@ obtain the full ГОСТ 2.114 source before claiming content coverage. Full-sou
 retention and an honest gap inventory are a foundation, not complete compliance.
 Keep supplied PDFs, corpus text, private document examples and runtime evidence
 out of Git. Preserve the unrelated hybrid_retriever.py user change.
+
+## 2026-11-17 — five further sources, TU source-state correction
+
+Register and explicitly import the additional supplied PDFs: ГОСТ 2.414-75
+(December 2010 edition with amendment 1), 2.701-2008 (supplied 2009 publication),
+2.710-81 (supplied copy including amended text), 2.601-2013 (August 2018 reprint)
+and 2.114-2016 (December 2018 reprint, 2019 cover). Read identity/scope text and
+visually inspect the first page of each supplied PDF. These observations do not
+establish current legal status or a complete visual/semantic review.
+
+The five new sources have 81 pages and 748 navigation candidates. The preserved
+library now contains 12 exact editions, 284 pages and 2123 page-local candidates.
+Verify all stored PDF hashes, registered extracted-text fingerprints and complete
+concatenation of candidate spans to every extracted page. Keep images in the
+unchanged PDF; no drawings are regenerated. Earlier entries/editions are retained.
+Only metadata enters Git, not PDF/text copies or private QA artifacts.
+
+Remove the hardcoded TU-source-absent warning. Coverage now distinguishes an
+unavailable/unverified local copy from a verified stored ГОСТ 2.114-2016 whose
+content checks remain unimplemented. Corruption still stops reporting rather
+than silently becoming absence. Both states retain incomplete conformity and
+unchanged rule outcomes; intake does not enable new transformations or passing
+checks. The preflight GUI uses neutral wording and the report supplies actual
+availability. Existing formatting selections and container fingerprint remain
+unchanged; no image rebuild is required.
+
+Preserve ГОСТ 2.601-2013 as a separate source. The supplied Р 2.610-2019 cites
+Р 2.601-2019 as well (including its page 1 note and page 3 definition reference).
+Record an edition-substitution review notice in source metadata and coverage;
+do not treat the provided 2013 text as the 2019 edition. This is supplied-text
+evidence, not a determination of either standard's present legal applicability.
+
+Validation: 362 application tests passed, eight optional tests skipped; strict
+mypy passes 41 hardened modules. Added synthetic regressions for absent/present/
+corrupt TU sources, unchanged verification outcomes after intake, the operating-
+document edition notice and pagination beyond the first ten catalog entries.
+Doctor reports local readiness and intact SQLite/Chroma. Deterministic RAG
+recall@1 remains 1.0; the existing PyPDF2 deprecation warning remains. No model,
+dependency or image downloads, no new database/collection and no new automatic
+normative check. This stage does not establish a new native GUI interaction pass.
+Local audit: eval-results/standards-intake-2026-11-17-b/{summary,coverage}.json.

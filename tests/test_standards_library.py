@@ -114,7 +114,7 @@ def test_incomplete_archive_is_corruption_not_an_absent_source(edition: tuple[So
 
 def test_coverage_does_not_equate_recipe_or_missing_sources_with_compliance(tmp_path: Path) -> None:
     report=build_report(b'exact candidate bytes','technical_specifications',tmp_path/'empty')
-    assert len(report.sources)==7 and len(report.requirements)==33
+    assert len(report.sources)==len(library.sources()) and len(report.requirements)==33
     assert all(not s.archived for s in report.sources)
     assert sum(r.in_formatting_recipe for r in report.requirements)==14
     assert not report.full_conformance_checked and not report.semantic_catalog_complete
@@ -123,6 +123,47 @@ def test_coverage_does_not_equate_recipe_or_missing_sources_with_compliance(tmp_
     assert report.candidate_sha256!=build_report(b'different','technical_specifications',tmp_path/'empty').candidate_sha256
     assert 'Процент соответствия не вычисляется' in report.render()
     with pytest.raises(ValueError): build_report(b'candidate','guessed passport')
+
+
+def test_tu_source_presence_is_distinct_from_implemented_checks(
+    edition: tuple[Source,Path,Path,Path],tmp_path: Path,
+) -> None:
+    import shutil
+    source,pdf,root,_=edition
+    standards=tmp_path/'standards'
+    shutil.copytree(Path(__file__).resolve().parents[1]/'standards',standards)
+    metadata=json.loads((standards/'library.json').read_text())
+    synthetic_tu=source.model_copy(update={'source_id':'gost-2-114-2016','designation':'ГОСТ 2.114-2016'})
+    metadata['sources']=[s for s in metadata['sources'] if s['source_id']!=synthetic_tu.source_id]
+    metadata['sources'].append(synthetic_tu.model_dump())
+    (standards/'library.json').write_text(json.dumps(metadata))
+    missing=build_report(b'candidate','technical_specifications',root,standards)
+    assert any('Нет проверенной локальной копии ГОСТ 2.114' in b for b in missing.blockers)
+    library.ingest(synthetic_tu,pdf,root)
+    present=build_report(b'candidate','technical_specifications',root,standards)
+    assert any('Полный источник ГОСТ 2.114-2016' in b and 'не реализована' in b for b in present.blockers)
+    assert not any('Нет проверенной локальной копии ГОСТ 2.114' in b for b in present.blockers)
+    assert not present.full_conformance_checked and not present.semantic_catalog_complete
+    assert {r.status for r in missing.requirements}=={r.status for r in present.requirements}
+    (root/synthetic_tu.sha256/'source.pdf').write_bytes(b'changed')
+    with pytest.raises(ValueError): build_report(b'candidate','technical_specifications',root,standards)
+
+
+def test_edition_notice_does_not_silently_substitute_operating_document_standard(tmp_path: Path) -> None:
+    report=build_report(b'candidate','unconfirmed',tmp_path/'empty')
+    old=next(s for s in report.sources if s.source_id=='gost-2-601-2013')
+    assert 'ГОСТ Р 2.601-2019' in old.note and 'не разрешена' in old.note
+    assert not old.selected_for_formatting and not old.archived
+
+
+def test_standards_after_first_page_are_discoverable_without_guessing(tmp_path: Path) -> None:
+    tools={t.name:t for t in create_standards_tools([],root=tmp_path/'empty')}
+    first=json.loads(tools['list_standards'].invoke({'limit':10}).split('\n',1)[1])
+    second=json.loads(tools['list_standards'].invoke({'offset':10,'limit':10}).split('\n',1)[1])
+    records=first+second
+    assert len(records)==len(library.sources())
+    assert len({s['source_id'] for s in records})==len(records)
+    assert any(s['source_id']=='gost-2-114-2016' for s in second)
 
 
 def test_tools_bind_selected_edition_citations_and_cancellation(edition: tuple[Source,Path,Path,Path]) -> None:

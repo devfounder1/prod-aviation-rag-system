@@ -113,10 +113,7 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
     blockers = ['Применимость каждого требования к этому документу ещё не подтверждена.',
                 'Автоматическое форматирование не заменяет проверку результата по пунктам стандарта.',
                 'Действие редакций на текущую дату не проверялось; ссылки на другие ГОСТы не заменяют их тексты.']
-    if document_kind == 'technical_specifications':
-        blockers.append('Нет полного источника ГОСТ 2.114 «Технические условия»: состав и содержание ТУ '
-                        'по нему не проверены. Другие виды документов не применяются к ТУ автоматически.')
-    else:
+    if document_kind == 'unconfirmed':
         blockers.append('Вид документа не подтверждён; отчёт не выбирает стандарты по догадке.')
     for source in records:
         try:
@@ -128,12 +125,25 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
         if corpus:
             candidates.extend(CandidateCoverage(source.source_id,source.sha256,u.page,u.unit_id,u.clause_candidate)
                               for u in corpus.units)
+        note = ('Выбран прежним рецептом; полная применимость требует проверки.' if source.sha256 in chosen else
+                'Не включён в автоматическое оформление; требуется разбор применимости и реализация.')
+        if source.source_id == 'gost-2-601-2013':
+            note += (' Это отдельная редакция: полученный ГОСТ Р 2.610-2019 ссылается также на '
+                     'ГОСТ Р 2.601-2019. Автоматическая подмена на ГОСТ 2.601-2013 не разрешена.')
         inventory.append(SourceCoverage(source.source_id,source.designation,source.sha256,
             source.pdf_pages,archived,len(corpus.units) if corpus else 0,
             tuple(p.number for p in corpus.pages if len(p.text.strip())<100) if corpus else (),
-            source.sha256 in chosen,
-            'Выбран прежним рецептом; полная применимость требует проверки.' if source.sha256 in chosen else
-            'Не включён в автоматическое оформление; требуется разбор применимости и реализация.'))
+            source.sha256 in chosen,note))
+    if document_kind == 'technical_specifications':
+        tu = next((s for s in inventory if s.source_id == 'gost-2-114-2016'),None)
+        if tu and tu.archived:
+            blockers.append('Полный источник ГОСТ 2.114-2016 «Технические условия» сохранён; '
+                            'проверка состава и содержания ТУ по нему ещё не реализована. '
+                            'Применимость этой редакции требует подтверждения.')
+        else:
+            blockers.append('Нет проверенной локальной копии ГОСТ 2.114 «Технические условия»: '
+                            'состав и содержание ТУ по нему не проверены.')
+        blockers.append('Другие виды документов не применяются к ТУ автоматически.')
     requirements: list[RequirementCoverage] = []
     for name in profile.selected_files:
         if name.startswith('profiles/'):
