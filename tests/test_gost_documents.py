@@ -55,7 +55,9 @@ def test_format_preserves_text_binary_parts_and_heading3_semantics(tmp_path: Pat
     report = format_docx(source, target)
     assert source.read_bytes() == before
     original, changed = Document(source), Document(target)
-    assert [p.text for p in original.paragraphs] == [p.text for p in changed.paragraphs]
+    expected = [p.text for p in original.paragraphs]
+    expected[2] = 'Technical value: 27.5\u00a0V. Do not rewrite.'
+    assert expected == [p.text for p in changed.paragraphs]
     assert changed.paragraphs[1].runs[0].font.size.pt == 16
     assert changed.paragraphs[3].runs[0].font.size is None
     assert not report.full_conformance_checked and report.body_text_preserved
@@ -302,14 +304,14 @@ def test_real_local_document_export_is_complete_and_source_unchanged(tmp_path: P
     path = tmp_path/'source.docx'; raw = source_docx(path)
     result = document_runner.prepare_document(path)
     assert path.read_bytes() == raw
-    assert result.pages and '27.5 V' in result.text
+    assert result.pages and '27.5\u00a0V' in result.text
     assert result.runtime_fingerprint == document_runner.runtime_fingerprint()
     assert result.docx != raw and result.warnings
     from standards_coverage import build_report
     import hashlib
     coverage = build_report(result.docx,'technical_specifications',tmp_path/'library')
     assert coverage.candidate_sha256 == hashlib.sha256(result.docx).hexdigest()
-    assert len(coverage.requirements) == 34 and not coverage.full_conformance_checked
+    assert len(coverage.requirements) == 35 and not coverage.full_conformance_checked
 
 
 @pytest.mark.skipif(os.environ.get('BUTUZ_DOCUMENTS_LIVE') != '1', reason='Requires prepared local document image')

@@ -20,6 +20,7 @@ from document_elements import normalize_elements, normalize_main_flow
 from standard_profiles import load_profile
 from metafile_layout import repair_figure_fonts
 from list_layout import normalize_lists
+from unit_spacing import bind_units
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS = {'w': W[1:-1]}
@@ -171,6 +172,9 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         font_updates, repaired_fonts, font_warnings = repair_figure_fonts(document, package)
         if _texts(document) != before:
             raise ValueError('Нарушена сохранность текста; результат не публикуется')
+        # All preceding layout transformations must still preserve exact text.
+        # This final, ledger-checked step may only change existing spaces to NBSP.
+        units = bind_units(document)
         updates = {**font_updates, 'word/document.xml': ET.tostring(document, xml_declaration=True, encoding='UTF-8', standalone=True)}
         if numbering is not None and (lists.items or lists.notes):
             updates['word/numbering.xml'] = ET.tostring(numbering, xml_declaration=True, encoding='UTF-8', standalone=True)
@@ -214,6 +218,7 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         warnings.append('Внешние ссылки сохранены без загрузки и обновления.')
     warnings.extend(elements.warnings)
     warnings.extend(lists.warnings)
+    warnings.extend(units.warnings)
     warnings.extend(font_warnings)
     if repaired_fonts:
         warnings.append('В копии для показа схем шрифт GOST заменён на локальный Liberation Sans. '
@@ -226,6 +231,8 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         f'Для обычных абзацев применён отступ {profile.indent_mm:g} мм; нумерация и специальные блоки сохранены.',
         f'Исправлены отступы и переносы перечислений: {lists.items}; нумерованных примечаний: {lists.notes}. '
         f'Убраны доказанные устаревшие ручные переносы: {lists.soft_breaks}. Текст и номера сохранены; знаки проверены без переписывания.',
+        f'Неразрывным пробелом связаны числовые значения с единицами: {units.quantities}; заменено пробелов: {units.spaces}. '
+        'Изменены только пробельные символы, значения и обозначения сохранены.',
         f'Оформлены таблицы с подписями: {elements.tables}. Сохранены значения и объединения ячеек; настроены шапки и переносы.',
         f'Размещены существующие рисунки: {elements.figures}. Масштаб пропорциональный; подписи и пояснения связаны с изображением.',
         f'Подготовлены копии старых схем с исправленным отображением шрифта: {repaired_fonts}. Исходники сохранены.',

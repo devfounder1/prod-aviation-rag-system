@@ -126,7 +126,9 @@ def test_formatter_keeps_numbering_and_all_text_nodes_with_lists_before_main_sec
         for level in orig.findall(W+'abstractNum'):
             assert ET.tostring(level) == ET.tostring(changed.find("w:abstractNum[@w:abstractNumId='"+level.get(W+'abstractNumId')+"']",NS))
         assert [n.get(W+'numId') for n in orig.findall(W+'num')] == [n.get(W+'numId') for n in changed.findall(W+'num')]
-        assert ET.fromstring(a.read('word/document.xml')).xpath('//w:t/text()',namespaces=NS) == ET.fromstring(b.read('word/document.xml')).xpath('//w:t/text()',namespaces=NS)
+        expected = ET.fromstring(a.read('word/document.xml')).xpath('//w:t/text()',namespaces=NS)
+        expected[-1] = 'Technical value: 27.5\u00a0V.'
+        assert expected == ET.fromstring(b.read('word/document.xml')).xpath('//w:t/text()',namespaces=NS)
 
 
 def test_body_outline_level_9_does_not_hide_lists() -> None:

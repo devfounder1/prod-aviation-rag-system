@@ -852,3 +852,47 @@ recall@1 remains 1.0. Private candidates, previews, reports and publication
 receipts stay in ignored eval-results/list-layout-2026-11-17/ and chat results;
 no new GUI interaction pass is claimed. Preserve the unrelated user edit in
 hybrid_retriever.py outside this commit.
+
+### 2026-11-17 — Keep quantities and units on the same line
+
+Review the supplied ГОСТ Р 2.105-2019 PDF page 30: clause 6.16.6 prohibits
+separating a value and its unit across lines/pages (with the printed-typewriter
+table exception). Add the reviewed unit-nonbreaking evidence record and select
+it explicitly: 35 registry records, 17 selected in the two-source recipe.
+`unit_spacing` replaces only existing ASCII spaces with NBSP at validated
+node/character offsets, including across styled runs, known compound units,
+grouped digits and supported parenthesized tolerances. Retain every digit,
+unit character, punctuation mark, run property and field instruction. Keep the
+existing exact-text preservation guard before this narrowly permitted final
+whitespace step; never globally decode/normalize or rewrite technical prose.
+Recognized Russian year abbreviations and ambiguous seconds/preposition cases
+are excluded. Fields, links, revisions and drawing text stay opaque; tabs,
+manual breaks and paragraph boundaries are not silently joined. The finite
+unit vocabulary and unresolved notation are not a complete SI interpreter.
+
+Add the module to the fixed Docker COPY/allowlist and runtime fingerprint.
+Update the prepared image offline over the same existing local base; no new
+packages, host converters, models or network downloads. The existing GUI
+approval previews receive the resulting exact candidate text and hash.
+
+Prepare another fresh TU from the original DOC in that isolated runtime:
+72 quantities bound, 99 spaces replaced, 24 pages. Independent comparison to
+the previous delivery after applying the exact same bounded rule confirms all
+remaining text/field instructions and the complete numbering part unchanged;
+10 opaque media/OLE parts are byte-identical, and the original DOC hash matches.
+Review changed PNG pages 3, 5, 6, 8, 9, 14–18 and 22; all other pages equal the
+previously inspected output. All five numeric/°С pairs on the relevant PDF page
+are on the same line. All four continuation captions pass the final-PDF guard;
+main prose still has 1.5 spacing. Publish new unique DOCX/review files in the
+same document chat via the authorized CLI workspace path, with verified
+FileReceipts and output_files visibility. Do not overwrite originals or previous
+outputs. Preserve prior manual-review and missing-GOST-font disclosures.
+
+Validation: 410 application tests pass, ten optional tests skipped, existing
+PyPDF2 deprecation warning unchanged. Three prepared-runtime tests also pass:
+end-of-line value/unit placement across bold/plain runs on deliberately narrow
+lines (four actual pairs), four-level list geometry, and complete export.
+Strict mypy passes all 44 hardened modules. Read-only doctor is ready with
+intact SQLite/Chroma and local Ollama; deterministic retrieval recall@1 is 1.0.
+Private QA files/receipts stay in ignored eval-results/unit-spacing-2026-11-17/.
+The unrelated user change in hybrid_retriever.py remains outside the commit.
