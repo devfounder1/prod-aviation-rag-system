@@ -56,6 +56,10 @@ class DocumentApproval(FileApproval):
             ft.Tab(text='Проверки', content=ft.Column([
                 ft.Text(self.proposal.description(), selectable=True, size=13),
             ], height=420, scroll=ft.ScrollMode.AUTO)),
+            ft.Tab(text='Покрытие ГОСТ', content=ft.Column([
+                ft.Text(self.proposal.coverage.render() if self.proposal.coverage else
+                        'Отчёт покрытия для этой операции не подготовлен.', selectable=True, size=12),
+            ], height=420, scroll=ft.ScrollMode.AUTO)),
         ], height=470)
         self.dialog = ft.AlertDialog(
             modal=True, title=ft.Text('Проверить оформление перед сохранением'),

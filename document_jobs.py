@@ -13,17 +13,19 @@ from activity import ActivityEvent
 from document_runner import DocumentCandidate, prepare_document
 from file_receipts import FileReceipt, receipt_summary, verified_receipt
 from file_tools import prepare_attachments, workspace_for_chat
+from standards_coverage import CoverageReport, build_report
 
 
 @dataclass(frozen=True)
 class DocumentProposal:
     path: str
     candidate: DocumentCandidate
+    coverage: CoverageReport | None = None
 
     def description(self) -> str:
         return (f'Создать DOCX\nПуть: {self.path}\nРазмер: {len(self.candidate.docx)} байт\n'
                 f'SHA-256: {hashlib.sha256(self.candidate.docx).hexdigest()}\n\n'
-                + self.candidate.description())
+                + self.candidate.description() + ('\n\n'+self.coverage.render(False) if self.coverage else ''))
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,8 @@ class DocumentOutcome:
 def create_document(chat_id: str, attachment: dict[str, str],
                     approve: Callable[[DocumentProposal], bool],
                     cancel: dict[str, bool] | None = None,
-                    on_activity: Callable[[ActivityEvent], None] | None = None) -> DocumentOutcome:
+                    on_activity: Callable[[ActivityEvent], None] | None = None,
+                    document_kind: str = 'unconfirmed') -> DocumentOutcome:
     def active() -> None:
         if cancel and cancel.get('cancelled'):
             raise RuntimeError('Обработка документа отменена')
@@ -61,7 +64,9 @@ def create_document(chat_id: str, attachment: dict[str, str],
     path = root / 'results' / (stem + '_ГОСТ_' + uuid.uuid4().hex[:8] + '.docx')
     if not path.resolve().is_relative_to(root):
         raise ValueError('Папка результатов вышла за рабочую папку чата')
-    proposal = DocumentProposal(str(path), candidate)
+    coverage = build_report(candidate.docx, document_kind)
+    active()
+    proposal = DocumentProposal(str(path), candidate, coverage)
     if on_activity:
         on_activity(ActivityEvent('approval', 'Проверьте страницы и подтвердите сохранение', 'AGENT'))
     if not approve(proposal):
@@ -83,4 +88,5 @@ def create_document(chat_id: str, attachment: dict[str, str],
     finally:
         Path(temporary).unlink(missing_ok=True)
     receipt = verified_receipt(path, candidate.docx, str(path.relative_to(root)))
-    return DocumentOutcome(receipt, 'Сохранён редактируемый проект DOCX.\n\n' + candidate.description())
+    return DocumentOutcome(receipt, 'Сохранён редактируемый проект DOCX.\n\n' + candidate.description()
+                           + '\n\n' + coverage.render(False))

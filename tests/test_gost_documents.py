@@ -241,9 +241,15 @@ def test_native_preview_allows_one_exact_acknowledged_candidate(
 ) -> None:
     raw = source_docx(tmp_path/'source.docx')
     page = MagicMock(loop=page_loop)
-    proposal = DocumentProposal(str(tmp_path/'result.docx'), candidate(raw))
+    from standards_coverage import build_report
+    coverage = build_report(raw,'technical_specifications',tmp_path/'library')
+    proposal = DocumentProposal(str(tmp_path/'result.docx'), candidate(raw),coverage)
     approval = DocumentApproval(page, RequestJob('a'), lambda: True, proposal)
     def confirm(dialog: Any) -> None:
+        tabs = dialog.content.content.controls[1]
+        assert tabs.tabs[3].text == 'Покрытие ГОСТ'
+        text = tabs.tabs[3].content.controls[0].value
+        assert coverage.candidate_sha256 in text and '2.114' in text
         checkbox = dialog.content.content.controls[-1]
         checkbox.value = True
         checkbox.on_change(MagicMock(control=checkbox))
@@ -262,7 +268,10 @@ def test_desktop_gost_action_captures_one_document_without_changing_agent_switch
     app.agent_mode = False
     app._pending_attachments = [{'name': 'input.doc', 'path': '/explicit/input.doc'}]
     app.gost_button.on_click(None)
-    app._handle_send.assert_called_once_with(None, document_name='input.doc')
+    dialog = app.page.open.call_args.args[0]
+    app._handle_send.assert_not_called()
+    dialog.actions[1].on_click(None)
+    app._handle_send.assert_called_once_with(None, document_name='input.doc', document_kind='unconfirmed')
     assert not app.agent_mode
     app._pending_attachments.append({'name': 'other.docx', 'path': '/explicit/other.docx'})
     app.gost_button.on_click(None)
@@ -296,6 +305,11 @@ def test_real_local_document_export_is_complete_and_source_unchanged(tmp_path: P
     assert result.pages and '27.5 V' in result.text
     assert result.runtime_fingerprint == document_runner.runtime_fingerprint()
     assert result.docx != raw and result.warnings
+    from standards_coverage import build_report
+    import hashlib
+    coverage = build_report(result.docx,'technical_specifications',tmp_path/'library')
+    assert coverage.candidate_sha256 == hashlib.sha256(result.docx).hexdigest()
+    assert len(coverage.requirements) == 33 and not coverage.full_conformance_checked
 
 
 @pytest.mark.skipif(os.environ.get('BUTUZ_DOCUMENTS_LIVE') != '1', reason='Requires prepared local document image')

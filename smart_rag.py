@@ -76,6 +76,7 @@ class SmartRAG:
                      approve: Callable[[str], bool] | None = None,
                      cancel_flag: dict[str, bool] | None = None) -> list[BaseTool]:
         from file_tools import create_file_tools
+        from standards_tools import create_standards_tools
 
         @tool
         def search_documents(query: str) -> str:
@@ -84,7 +85,8 @@ class SmartRAG:
             sources.extend(name for name in found if name not in sources)
             return context or "В документах ничего не найдено."
 
-        return [search_documents, *create_file_tools(chat_id, attachments, approve, cancel_flag)]
+        return [search_documents, *create_file_tools(chat_id, attachments, approve, cancel_flag),
+                *create_standards_tools(sources, cancel_flag)]
 
     def query(self, question: str, chat_id: str | None = None) -> str:
         return self.query_stream(question, chat_id=chat_id)[0]

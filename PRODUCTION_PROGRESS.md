@@ -628,3 +628,72 @@ project-root/latest-copy and automatic-post-edit tests pass. Syntax compilation,
 read-only doctor (ready/intact SQLite and Chroma), and deterministic RAG recall@1
 (1.0) pass. PyPDF2 emits its existing deprecation warning. Runtime QA data,
 chat histories, fixture copies and test output stay excluded from Git.
+
+## 2026-11-17 — complete source archive and explicit standards coverage gaps
+
+First delivery stage for the expanded standards library, with technical
+specifications (TU) explicitly chosen by the user as the first document kind.
+This is NOT completed semantic extraction or implementation of every rule.
+
+Register seven exact supplied editions in standards/library.json: the existing
+R 2.105-2019 and R 2.104-2023 (matching their previous SHA-256), plus 2.702-2011,
+R 2.610-2019, R 2.106-2019, R 2.102-2023 and 2.413-72. The five new PDFs have
+138 pages; the whole library has 203. Keep full original PDF copies (visuals
+included), all extracted page text and 1375 lossless page-local navigation
+fragments in ignored data/standards_library/v1/. Every fragment remains an
+unreviewed candidate, not necessarily an atomic requirement. Images/geometry,
+tables, applicability, exceptions and cross-page continuations need review.
+Do not claim that all rules have been semantically captured or checked.
+
+standards_library imports explicitly registered hashes/page counts only, verifies
+the registered extracted-text fingerprint, atomically publishes complete copies
+and rejects corrupt, modified, incomplete or symlinked editions. Existing
+editions and host originals are not overwritten. Search is literal, bounded and
+scoped to one edition, with page/hash citations and explicit partial excerpts.
+Separate top-level headings from earlier contents entries when proposing clause
+navigation; numbers are still unverified candidates. Unknown standards/versions
+are not guessed. PDF and derived text stay local, with no downloads/OCR or new
+Chroma database/collection. No new dependencies were installed.
+
+Universal AGENT tools list_standards/search_standard/read_standard_page use
+request-owned cancellation and source lists. Code-project repair tools remain
+restricted to their earlier smaller surface. Ordinary SEARCH still uses the
+existing shared document retrieval service; automatic corpus routing into that
+route is not implemented by this stage. These are source-reading tools, not a
+general normative execution engine.
+
+Add standards_coverage: include every archived navigation candidate, all seven
+sources, the 33 earlier rule records and the 14 selected recipe records. Bind
+each report to exact candidate DOCX bytes. An implemented transformation or
+retrieved excerpt cannot confer a passing/fulfilled status. Keep applicability
+unresolved and unimplemented checks explicit; report zero automatic normative
+pass conclusions, no compliance percentage and no certificate. TU reports mark
+the missing full ГОСТ 2.114 source; operating-document and electrical-diagram
+standards are not automatically applied to technical specifications.
+
+The desktop now captures document kind in a native in-app modal before running
+the job, rejects stale chat/attachment selections, and adds a Coverage tab to
+the exact-byte approval dialog. Publication retains existing approval,
+cancellation, preservation and FileReceipt requirements. The current formatting
+recipe/container transformations have not changed and need no image rebuild.
+Coverage is host-side read-only analysis; it does not introduce host conversion.
+CLI can export a complete JSON coverage inventory to a new report path only.
+
+Validation: 359 offline application tests pass, eight optional tests skipped;
+strict mypy passes 41 hardened modules. A separate prepared-Docker document
+export passes and its returned DOCX hash binds the coverage report. Actual native
+modal/approval callbacks are exercised, including exact candidate text, missing
+TU dependency, stale ownership and rejection. Read-only doctor reports ready,
+SQLite/Chroma intact; deterministic RAG recall@1 remains 1.0. The existing PyPDF2
+deprecation warning remains. The new desktop process opens visibly, but Computer
+Use clicks still fail with noWindowsAvailable even after Raise: this does NOT
+constitute a successful native GUI interaction pass. Local evidence includes
+eval-results/standards-intake-2026-11-17/coverage-final.json and gui.log.
+
+Remaining work: verified semantic rule records/conditions/dependencies for the
+new editions, additional explicit profiles and independent per-rule validators,
+visual-example interpretation and real GUI approval verification. For TU,
+obtain the full ГОСТ 2.114 source before claiming content coverage. Full-source
+retention and an honest gap inventory are a foundation, not complete compliance.
+Keep supplied PDFs, corpus text, private document examples and runtime evidence
+out of Git. Preserve the unrelated hybrid_retriever.py user change.

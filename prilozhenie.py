@@ -615,7 +615,29 @@ class AviationRAGApp:
         if len(documents) != 1:
             self._show_toast('Прикрепите один исходный DOC или DOCX. PDF пока не поддерживается оформлением.')
             return
-        self._handle_send(e, document_name=documents[0]['name'])
+        chat_id = self.chat_manager.current_chat_id
+        expected = [dict(item) for item in getattr(self, '_pending_attachments', [])]
+        kind = ft.Dropdown(label='Вид документа для отчёта покрытия', value='unconfirmed',
+                           options=[ft.dropdown.Option('unconfirmed', 'Не определён — требуется проверка'),
+                                    ft.dropdown.Option('technical_specifications', 'Технические условия')], width=490)
+
+        def start(event: Any) -> None:
+            self.page.close(dialog)
+            if (self.is_processing or self.chat_manager.current_chat_id != chat_id or
+                    getattr(self, '_pending_attachments', []) != expected):
+                self._show_toast('Чат или вложения изменились; выберите документ заново.')
+                return
+            self._handle_send(event, document_name=documents[0]['name'], document_kind=kind.value or 'unconfirmed')
+
+        dialog = ft.AlertDialog(modal=True, title=ft.Text('Область проверки ГОСТ'),
+            content=ft.Column([kind, ft.Text(
+                'Оформление использует проверенный профиль Р 2.105 / Р 2.104. '
+                'Во вкладке «Покрытие ГОСТ» будут показаны источники и непроверенные требования. '
+                'Для ТУ пока отсутствует источник ГОСТ 2.114; содержание по нему не проверяется.', size=13)],
+                tight=True, width=510),
+            actions=[ft.TextButton('Отмена',on_click=lambda _: self.page.close(dialog)),
+                     ft.ElevatedButton('Подготовить документ',on_click=start)])
+        self.page.open(dialog)
 
     def _queue_job_ui(self, job: RequestJob, action: Callable[..., Any], *args: Any) -> None:
         if not self._jobs.is_current(job) or not self._ui_dispatch.active:
@@ -672,7 +694,8 @@ class AviationRAGApp:
 
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
-                 history: list[dict[str, Any]], document_name: str | None = None) -> None:
+                 history: list[dict[str, Any]], document_name: str | None = None,
+                 document_kind: str = 'unconfirmed') -> None:
         try:
             if not self._ui_dispatch.active or not self._jobs.is_current(job):
                 return
@@ -691,7 +714,7 @@ class AviationRAGApp:
 
                 outcome = create_document(
                     job.chat_id, source, approve_document, job.token,
-                    lambda event: self._queue_activity(job, event))
+                    lambda event: self._queue_activity(job, event), document_kind=document_kind)
                 if not job.token.get('cancelled'):
                     self._queue_job_ui(job, self._complete_job, job, outcome.render(), [])
                 return
@@ -1322,7 +1345,7 @@ class AviationRAGApp:
         self.page.update()
         self.messages_column.scroll_to(offset=-1, duration=300)
 
-    def _handle_send(self, e, document_name: str | None = None):
+    def _handle_send(self, e, document_name: str | None = None, document_kind: str = 'unconfirmed'):
         text = (f'Оформить документ «{document_name}» по ГОСТ Р 2.105-2019 / Р 2.104-2023'
                 if document_name is not None else self.input_field.value.strip())
         if not text or self.is_processing:
@@ -1361,7 +1384,8 @@ class AviationRAGApp:
         history = (self.chat_manager.get_current_chat() or {}).get("messages", [])[:-1][-8:]
         threading.Thread(
             target=self._process,
-            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history, document_name),
+            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history,
+                  document_name, document_kind),
             daemon=True
         ).start()
 

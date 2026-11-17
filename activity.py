@@ -20,6 +20,8 @@ def tool_activity(name: str) -> ActivityEvent:
     if name == 'search_documents':
         return ActivityEvent('searching', 'Ищу сведения в документах', 'AGENT')
     details = {
+        'list_standards': 'Проверяю редакции ГОСТов', 'search_standard': 'Ищу пункт стандарта',
+        'read_standard_page': 'Читаю страницу стандарта',
         'read_file': 'Читаю файл', 'list_directory': 'Проверяю файлы чата',
         'write_file': 'Готовлю файл', 'append_to_file': 'Дополняю файл',
         'replace_lines': 'Готовлю изменения', 'replace_text': 'Готовлю точечную правку',

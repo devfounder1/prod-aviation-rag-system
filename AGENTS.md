@@ -1,5 +1,10 @@
 # AGENTS.md — BUTUZ_AI Project Context
 
+## Standards corpus and coverage
+- `standards/library.json` registers seven exact supplied PDF editions, source/text hashes and page counts. `standards_library` explicitly imports matching PDFs into ignored `data/standards_library/v1/`; retain original PDF visuals and every extracted page, reject corruption/version mismatches, never overwrite an edition or download/OCR during runtime. Numbered fragments are UNREVIEWED navigation candidates, not atomic normative requirements or verified clause numbers. Do not infer full semantic coverage from page/text completeness.
+- Standards agent tools select one registered edition per search/read, preserve page/hash citations and bounded/truncated excerpts, and use request-owned cancellation/source lists. They do not expand the project-repair tool surface. The ordinary SEARCH route still uses its existing shared retrieval service; no new Chroma collection is added.
+- `standards_coverage` binds the complete candidate catalog and the 33 existing rule records to exact candidate DOCX bytes. A formatting transformation, source excerpt or model opinion never grants a passing/fulfilled status. Keep unresolved applicability, unavailable sources, visual/manual review and unimplemented checks visible; no compliance percentage or certificate. Only the prior two-source recipe runs transformations. Capture the GUI document-kind choice per request, reject stale chat/attachment dialogs, and show coverage before approval. For technical specifications, explicitly report the missing full ГОСТ 2.114 source; do not apply operating-manual rules to TU automatically. New sources do not silently change the container recipe/fingerprint.
+
 ## Stack & Environment
 - **GUI Framework:** Flet (Python, async/await UI loops).
 - **ML / AI Engine:** PyTorch; local LLM inference through **Ollama**, using its OpenAI-compatible endpoint `http://127.0.0.1:11434/v1`.
