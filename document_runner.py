@@ -1,7 +1,7 @@
 """Bounded document export from a disposable, offline local container."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 import json
 import hashlib
@@ -34,6 +34,7 @@ class DocumentCandidate:
     warnings: tuple[str, ...]
     legacy_import: bool
     runtime_fingerprint: str = ''
+    preview_pdf: bytes = b''
 
     def description(self) -> str:
         return ('Профиль: ' + self.profile + '\n\nИзменения:\n' + '\n'.join(self.changes)
@@ -180,7 +181,7 @@ def decode_export(raw: bytes) -> DocumentCandidate:
     return DocumentCandidate(files['document.docx'], tuple(files[n] for n in names),
                              text, profile,
                              tuple(report['changes']), tuple(report['warnings']),
-                             report.get('legacy_import') is True, fingerprint)
+                             report.get('legacy_import') is True, fingerprint, files['document.pdf'])
 
 
 def runtime_fingerprint() -> str:
@@ -239,6 +240,11 @@ def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
             candidate = decode_export(bytes(export.buffers[0]))
             if candidate.runtime_fingerprint != expected_runtime:
                 raise RuntimeError('Обработчик документов устарел. Пересоберите butuz-documents:local по README; файл не сохранён.')
+            from tu_validation import verify_preview
+            captions = verify_preview(candidate.docx, candidate.preview_pdf)
+            candidate = replace(candidate, changes=(*candidate.changes,
+                f'В итоговом PDF проверено наличие подписей продолжения на отдельных страницах: {captions}. '
+                'Это не заменяет визуальную проверку строк таблиц и рисунков.'))
             if cancel and cancel.get('cancelled'):
                 raise RuntimeError('Обработка документа отменена')
             return candidate

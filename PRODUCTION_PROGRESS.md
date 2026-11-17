@@ -738,3 +738,60 @@ recall@1 remains 1.0; the existing PyPDF2 deprecation warning remains. No model,
 dependency or image downloads, no new database/collection and no new automatic
 normative check. This stage does not establish a new native GUI interaction pass.
 Local audit: eval-results/standards-intake-2026-11-17-b/{summary,coverage}.json.
+
+## 2026-11-17 — formatted TU artifact and scoped document checks
+
+Prepare a fresh editable DOCX from the existing private legacy TU using only the
+prepared offline document container. Retain the original DOC SHA-256 unchanged.
+The result has 24 rendered pages: existing title/frame/stamp geometry, technical
+text and values, tables and original opaque diagram/OLE parts are preserved.
+The existing recipe retains 1.5 prose spacing, calculated table parts, four
+continuation captions and refreshed TOC caches with zero unresolved targets.
+The disclosed legacy diagram display copy uses Liberation Sans for the missing
+GOST font; originals remain intact. No missing technical prose is invented.
+
+Inspect all 24 page PNGs and independently read final PDF captions. An initial
+visual suspicion of omitted captions was disproved by single-page PNG inspection
+and PDF positions: the captions are present. Do not claim a table-layout bug was
+fixed in this stage; that algorithm and the container image are unchanged.
+After final preparation, every page PNG is byte-identical to the reviewed page.
+CLI publication (the workspace-only exception, not a bypass of GUI approval)
+adds a new uniquely named DOCX and review Markdown in the original document
+chat's results folder. Exact readback produces FileReceipts; output_files confirms
+visibility. Previous outputs/originals and stored chat messages are not replaced.
+The final document is formatted for author review, not a compliance certificate.
+
+Add tu_validation read-only measurements gated in coverage by explicit TU kind,
+availability and the pinned provided ГОСТ 2.114-2016 SHA-256. Measure A4 section
+sizes and explicit 1.5/zero-gap properties of recognized main prose; unknown
+section dimensions cannot become a positive result. Proven adjacent table
+captions are excluded from prose spacing. For this document, all five section
+sizes measure A4 and all 141 recognized prose paragraphs match that spacing.
+Observe introductory wording and real Heading 1 section headings, without
+counting contents or Heading 3/4 requirements as main sections. Missing separate
+safety/environment/operation/warranty headings require TZ/developer confirmation
+under 5.1.2; they are not automatically violations and no empty sections are added.
+The source refers to separate common TU. That referenced document and the basis
+for developer-selected composition are unavailable, so full content validation
+remains unresolved. Report actual observations separately from the 33 existing
+normative records, whose overall conformity remains unassessed.
+
+Retain bounded PDF preview bytes on DocumentCandidate. Before returning a prepared
+document, the host checks explicit continuation captions adjacent to tables in
+the final rendered PDF, on distinct pages within page bounds; missing/clipped
+captions prevent publication. Ordinary text mentions without a table are ignored.
+The private artifact passes all four caption checks. This test does not prove
+row fit, drawing correctness or complete GOST compliance. No host conversion,
+model-generated code, downloads, new collections or changed formatting recipe.
+
+Validation: 372 application tests pass, eight optional tests skipped; strict
+mypy passes the 42 hardened modules (and the final TU module separately after
+the last guard refinement). A prepared-container export passes; the private
+24-page document was also rendered through the actual container and checked.
+Read-only doctor reports ready/intact SQLite and Chroma; deterministic retrieval
+recall@1 is 1.0. The existing PyPDF2 deprecation warning remains. New synthetic
+tests cover scoped measurements, developer exceptions, TOC/Heading 3 exclusion,
+unknown page sizes, lost/duplicate-page/clipped captions and non-caption prose.
+No new native GUI interaction pass is claimed. Private evidence and the
+publication receipts remain under eval-results/tu-gost-ready-2026-11-17/;
+the technical source, candidate, pages, PDF and report stay outside Git.

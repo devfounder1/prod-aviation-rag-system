@@ -13,6 +13,7 @@ from pathlib import Path
 
 import standards_library as library
 from standard_profiles import load_profile
+from tu_validation import DocumentCheck, TU_SOURCE_SHA256, validate_tu
 
 ROOT = Path(__file__).resolve().parent
 
@@ -65,6 +66,7 @@ class CoverageReport:
     requirements: tuple[RequirementCoverage, ...]
     blockers: tuple[str, ...]
     candidates: tuple[CandidateCoverage, ...] = ()
+    document_checks: tuple[DocumentCheck, ...] = ()
     full_conformance_checked: bool = False
     semantic_catalog_complete: bool = False
 
@@ -91,6 +93,11 @@ class CoverageReport:
             if source.textless_pages:
                 lines.append('Нужны распознавание/просмотр страниц: '+str(source.textless_pages))
         if details:
+            if self.document_checks:
+                lines.append('\nИзмерения и наблюдения по ТУ (не полное нормативное заключение):')
+                for check in self.document_checks:
+                    lines.append(f'{check.check_id}: {check.status}; {check.reference}\n'
+                                 f'Область: {check.scope}\n{check.evidence}')
             lines.append('\nРазобранные требования (все требуют проверки конкретного документа):')
             for row in self.requirements:
                 lines.append(f'{row.designation}, п. {", ".join(row.clauses)}, PDF стр. {row.pdf_pages}; '
@@ -109,6 +116,7 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
     chosen = {s['sha256']: frozenset(s['rule_ids']) for s in recipe['sources']}
     records = library.sources(standards_root/'library.json')
     inventory: list[SourceCoverage] = []
+    document_checks: tuple[DocumentCheck, ...] = ()
     candidates: list[CandidateCoverage] = []
     blockers = ['Применимость каждого требования к этому документу ещё не подтверждена.',
                 'Автоматическое форматирование не заменяет проверку результата по пунктам стандарта.',
@@ -138,8 +146,12 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
         tu = next((s for s in inventory if s.source_id == 'gost-2-114-2016'),None)
         if tu and tu.archived:
             blockers.append('Полный источник ГОСТ 2.114-2016 «Технические условия» сохранён; '
-                            'проверка состава и содержания ТУ по нему ещё не реализована. '
+                            'полная проверка состава и содержания ТУ по нему ещё не реализована. '
                             'Применимость этой редакции требует подтверждения.')
+            if tu.sha256 == TU_SOURCE_SHA256:
+                document_checks=validate_tu(candidate)
+            else:
+                blockers.append('Редакция ГОСТ 2.114 отличается от поддерживаемой анализатором; измерения ТУ не выполнялись.')
         else:
             blockers.append('Нет проверенной локальной копии ГОСТ 2.114 «Технические условия»: '
                             'состав и содержание ТУ по нему не проверены.')
@@ -164,7 +176,7 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
                 'Есть преобразование в рецепте; нормативная проверка результата ещё не реализована.' if selected else
                 'Запись есть в реестре, но этот рецепт не выполняет её проверку или исправление.'))
     return CoverageReport(hashlib.sha256(candidate).hexdigest(),document_kind,profile.profile_id,
-                          tuple(inventory),tuple(requirements),tuple(blockers),tuple(candidates))
+                          tuple(inventory),tuple(requirements),tuple(blockers),tuple(candidates),document_checks)
 
 
 def main() -> None:
