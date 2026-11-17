@@ -62,7 +62,7 @@ class HybridRetriever:
                 self.bm25 = None
                 return
             
-            # 🆕 СОХРАНЯЕМ документы в self.documents с метаданными
+            #СОХРАНЯЕМ документы в self.documents с метаданными
             self.documents = [
                 LangChainDocument(page_content=text, metadata=metadata or {})
                 for text, metadata in zip(texts, metadatas)
