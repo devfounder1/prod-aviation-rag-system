@@ -19,6 +19,7 @@ from document_inspection import inspect_docx
 from document_elements import normalize_elements, normalize_main_flow
 from standard_profiles import load_profile
 from metafile_layout import repair_figure_fonts
+from list_layout import normalize_lists
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS = {'w': W[1:-1]}
@@ -164,10 +165,15 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         if not headings:
             raise ValueError('Не найдены размеченные разделы. Нужна проверка структуры; автоматическое угадывание отключено.')
         elements = normalize_elements(document, profile.table_pt, profile.table_header_pt)
+        numbering = (ET.fromstring(package.read('word/numbering.xml'), parser)
+                     if 'word/numbering.xml' in package.namelist() else None)
+        lists = normalize_lists(document, styles, numbering, profile.indent_mm)
         font_updates, repaired_fonts, font_warnings = repair_figure_fonts(document, package)
         if _texts(document) != before:
             raise ValueError('Нарушена сохранность текста; результат не публикуется')
         updates = {**font_updates, 'word/document.xml': ET.tostring(document, xml_declaration=True, encoding='UTF-8', standalone=True)}
+        if numbering is not None and (lists.items or lists.notes):
+            updates['word/numbering.xml'] = ET.tostring(numbering, xml_declaration=True, encoding='UTF-8', standalone=True)
         from document_layout import normalize_stamps
         rotated = dates = page_fields = 0
         for name in package.namelist():
@@ -207,6 +213,7 @@ def format_docx(source: Path, target: Path) -> FormatReport:
     if evidence.external_relationships:
         warnings.append('Внешние ссылки сохранены без загрузки и обновления.')
     warnings.extend(elements.warnings)
+    warnings.extend(lists.warnings)
     warnings.extend(font_warnings)
     if repaired_fonts:
         warnings.append('В копии для показа схем шрифт GOST заменён на локальный Liberation Sans. '
@@ -217,6 +224,8 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         'Убраны старые интервалы до/после обычных абзацев и привязка строк к сетке. Следующие разделы идут в потоке; приложения — с новой страницы.',
         f'Зарезервировано место между основным текстом и рамкой/штампом в распознанных разделах: {framed_sections}.',
         f'Для обычных абзацев применён отступ {profile.indent_mm:g} мм; нумерация и специальные блоки сохранены.',
+        f'Исправлены отступы и переносы перечислений: {lists.items}; нумерованных примечаний: {lists.notes}. '
+        f'Убраны доказанные устаревшие ручные переносы: {lists.soft_breaks}. Текст и номера сохранены; знаки проверены без переписывания.',
         f'Оформлены таблицы с подписями: {elements.tables}. Сохранены значения и объединения ячеек; настроены шапки и переносы.',
         f'Размещены существующие рисунки: {elements.figures}. Масштаб пропорциональный; подписи и пояснения связаны с изображением.',
         f'Подготовлены копии старых схем с исправленным отображением шрифта: {repaired_fonts}. Исходники сохранены.',

@@ -795,3 +795,60 @@ unknown page sizes, lost/duplicate-page/clipped captions and non-caption prose.
 No new native GUI interaction pass is claimed. Private evidence and the
 publication receipts remain under eval-results/tu-gost-ready-2026-11-17/;
 the technical source, candidate, pages, PDF and report stay outside Git.
+
+### 2026-11-17 — Enumeration wrapping and scoped list review
+
+Fix the supplied TU's paragraph-style enumeration wraps while retaining main
+prose spacing 1.5. `list_layout` resolves direct and inherited numbering, level
+overrides and body outline level 9; a false bidi property does not imply RTL.
+Recognized list/numbered-note first lines have a positive indent and continuation
+lines return to the text boundary of their level. The 12.5 mm step and 6.35 mm
+label slot are explicit project choices under the provided edition's 6.7.2/6.7.8,
+not dimensions inferred from the illustration. Numbered notes are separated from
+enumerations. Section/requirement headings, tables, fields, actual RTL and unknown
+constructs remain protected. A shared counter with any unclassified user cannot
+be restyled. Tabulated list text remains for manual review rather than losing its
+column-like alignment. Only whitespace-adjacent plain run breaks can be removed;
+text nodes, page/column/clear breaks and ambiguous breaks are preserved.
+
+Rendering demonstrated that numbering-level hanging geometry can override the
+paragraph properties. Add isolated abstract-layout copies for fully classified
+counter users, retaining original definitions, paragraph counter IDs/levels,
+numbering formats, restarts and font runs. Never renumber body requirements or
+replace document text. Audit nested punctuation endings, introductory colons,
+capitalization, marker choice and repeated numbered counters; expose review
+warnings without changing technical names, abbreviations or punctuation.
+Add the reviewed layout evidence record and explicitly select layout/punctuation
+in the two-source recipe (34 catalog records, 16 selected). Include the new helper
+in Docker's allowlist, fixed COPY and host/image freshness fingerprint.
+
+Update the prepared local document image without downloads: the original build's
+system-package layer was not cached, so its network-disabled build failed. The
+successful explicit setup copies only reviewed fixed code/evidence over the
+previously prepared image ID a7efc27973c131d5ccf11ca18abe02e3650c9cc9b5ffcf28fc1effe6748c0974.
+No host converter or package-download fallback was used.
+
+Prepare and publish a new workspace-only CLI copy and review report under the
+same document chat, with exact FileReceipts and output_files visibility checks.
+The original DOC hash is unchanged. The 24-page result adjusts 10 enumeration
+items and six numbered notes and removes one proven obsolete manual line break.
+All text nodes, paragraph counter IDs/levels, original numbering definitions and
+10 opaque media/OLE parts match the previous delivery. Four continuation captions
+pass final-PDF checks. Inspect changed pages 3, 14–21 and 23; other pages match
+the previously reviewed output. Every final PNG matches the reviewed candidate.
+Three punctuation endings and two lists' initial uppercase wording are flagged;
+the seven-item tabulated indicator list remains explicitly for manual review.
+Existing missing-font display-copy disclosure and incomplete-conformity warnings
+remain visible. Do not claim full GOST verification or native Microsoft Word QA.
+
+Validation: 385 application tests pass, nine optional tests skipped, with the
+existing PyPDF2 deprecation warning. Two additional prepared-container checks
+pass: complete export plus rendered coordinates for all four nested levels
+(letter/Arabic/Roman/hyphen) including actual continuation-line and first-line
+positions. Strict mypy passes all 43 hardened modules. Read-only doctor is ready
+with intact SQLite/Chroma and local Ollama (the initial restricted-network check
+could not connect; the enabled loopback check succeeds). Deterministic retrieval
+recall@1 remains 1.0. Private candidates, previews, reports and publication
+receipts stay in ignored eval-results/list-layout-2026-11-17/ and chat results;
+no new GUI interaction pass is claimed. Preserve the unrelated user edit in
+hybrid_retriever.py outside this commit.

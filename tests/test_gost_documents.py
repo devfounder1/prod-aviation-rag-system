@@ -309,7 +309,7 @@ def test_real_local_document_export_is_complete_and_source_unchanged(tmp_path: P
     import hashlib
     coverage = build_report(result.docx,'technical_specifications',tmp_path/'library')
     assert coverage.candidate_sha256 == hashlib.sha256(result.docx).hexdigest()
-    assert len(coverage.requirements) == 33 and not coverage.full_conformance_checked
+    assert len(coverage.requirements) == 34 and not coverage.full_conformance_checked
 
 
 @pytest.mark.skipif(os.environ.get('BUTUZ_DOCUMENTS_LIVE') != '1', reason='Requires prepared local document image')

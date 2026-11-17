@@ -8,7 +8,7 @@
       "file": "gost_r_2_105_2019.json",
       "profile_id": "gost-r-2.105-2019-user-copy-2024",
       "sha256": "c3bb3ae4a47c190004bc48225dc8bce53e9579e8b05379a1429d749e28d250ad",
-      "rule_ids": ["heading-format", "heading-clearance", "section-page-break", "body-line-spacing", "paragraph-indent", "secondary-font-size", "frame-clearance", "table-caption-position", "table-header-continuation", "table-numbering", "figure-caption-position", "figure-numbering"]
+      "rule_ids": ["heading-format", "heading-clearance", "section-page-break", "body-line-spacing", "paragraph-indent", "secondary-font-size", "frame-clearance", "table-caption-position", "table-header-continuation", "table-numbering", "figure-caption-position", "figure-numbering", "list-layout", "list-punctuation"]
     },
     {
       "file": "gost_r_2_104_2023.json",
@@ -33,6 +33,7 @@
   "notes": [
     "Численные настройки — выбранный вариант оформления проекта, а не утверждение об обязательных значениях во всех ГОСТах.",
     "Применимость профиля подтверждается просмотром документа. Неизвестные формы, конфликтующие требования и перерисовка схем автоматически не разрешаются.",
+    "Переносы списков: абзацный отступ 12,5 мм, шаг уровня 12,5 мм, промежуток после метки 6,35 мм — выбор проекта по 6.7.2/6.7.8. Текст и номера сохраняются; пунктуация проверяется с предупреждениями.",
     "Профиль загружает только явно перечисленные реестры. Добавление PDF в каталог само по себе не создаёт исполняемых правил."
   ]
 }

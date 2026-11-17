@@ -20,7 +20,7 @@ SUPPORTED_SELECTION: dict[str, frozenset[str]] = {
         'heading-format', 'heading-clearance', 'section-page-break',
         'body-line-spacing', 'paragraph-indent', 'secondary-font-size', 'frame-clearance',
         'table-caption-position', 'table-header-continuation', 'table-numbering',
-        'figure-caption-position', 'figure-numbering',
+        'figure-caption-position', 'figure-numbering', 'list-layout', 'list-punctuation',
     }),
     'gost_r_2_104_2023.json': frozenset({
         'textual-forms', 'additional-organization-fields',
@@ -142,5 +142,5 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
 def runtime_files() -> tuple[str, ...]:
     """Code and selected evidence covered by the host/image freshness check."""
     return ('document_inspection.py', 'gost_formatter.py', 'document_layout.py',
-            'document_elements.py', 'table_pagination.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
+            'document_elements.py', 'list_layout.py', 'table_pagination.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
             *(f'standards/{name}' for name in load_profile().selected_files))
