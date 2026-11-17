@@ -1,3 +1,4 @@
+import asyncio
 import json
 import threading
 from pathlib import Path
@@ -13,8 +14,13 @@ logger = get_logger(__name__)
 
 sys.path.append(str(Path(__file__).parent))
 from smart_rag import SmartRAG
+from vision import VisionAnalysisError
 from jobs import JobController, RequestJob
+from ui_dispatch import UiDispatcher
 from typing import Any, Callable
+from activity import ActivityEvent
+from ui_components import PALETTE, ActivityView, brand_icon, icon_button, welcome_panel
+from assistant_identity import ASSISTANT_NAME
 
 try:
     from document_processor import add_document, list_documents
@@ -22,21 +28,9 @@ except ImportError:
     add_document = None
     list_documents = None
 
-THEME = {
-    "bg_main": "#1a1f2e",
-    "bg_sidebar": "#0f1419",
-    "bg_input": "#252b3b",
-    "bg_bubble_user": "#2563eb",
-    "bg_bubble_ai": "#252b3b",
-    "text_primary": "#e2e8f0",
-    "text_secondary": "#64748b",
-    "accent": "#f59e0b",
-    "border": "#334155",
-    "status_ready": "#10b981",
-    "status_busy": "#f59e0b",
-}
+THEME = PALETTE
 
-APP_NAME = "Aviation RAG-System"
+APP_NAME = ASSISTANT_NAME
 APP_VERSION = "1.0.0"
 ASSETS_DIR = Path(__file__).parent / "assets"
 
@@ -45,6 +39,7 @@ from config import settings
 AVAILABLE_MODELS = {
     settings.llm_model_name: settings.llm_model_name,
     "Qwen 2.5 (14B)": "qwen2.5:14b",
+    "Qwen 2.5 VL (7B, изображения)": "qwen2.5vl:7b",
     "Qwen 2.5 Coder Abliterated (14B)": "huihui_ai/qwen2.5-coder-abliterate:14b",
     "Qwen 3 Abliterated (14B)": "huihui_ai/qwen3-abliterated:14b",
     "Qwen 3.5 Uncensored Aggressive (9B)": "fredrezones55/Qwen3.5-Uncensored-HauhauCS-Aggressive:9b",
@@ -65,27 +60,6 @@ def load_assets():
         path = ASSETS_DIR / "avatars" / f"{name}.png"
         if path.exists():
             assets[name] = str(path)
-    
-    for name in ["clear", "new_chat", "send", "settings"]:
-        path = ASSETS_DIR / "icons" / f"{name}.png"
-        if path.exists():
-            assets[name] = str(path)
-    
-    # Умный поиск иконки для добавления файла
-    add_found = False
-    for add_name in ["add.png", "plus.png", "attach.png", "add_file.png"]:
-        add_path = ASSETS_DIR / "icons" / add_name
-        if add_path.exists():
-            assets["add"] = str(add_path)
-            add_found = True
-            print(f"[ASSETS] ✓ Найдена иконка добавления: {add_name}", flush=True)
-            break
-    
-    if not add_found:
-        print("[WARN] Иконка добавления файла не найдена! Проверь названия файлов в папке assets/icons/", flush=True)
-        # В крайнем случае используем new_chat как заглушку, но лучше переименовать файл
-        if "new_chat" in assets:
-            assets["add"] = assets["new_chat"]
     
     bg_path = ASSETS_DIR / "background.png"
     if bg_path.exists():
@@ -109,6 +83,12 @@ class AviationRAGApp:
         
         self.chat_manager = ChatManager()
         self._jobs = JobController()
+        self._shutdown_started = threading.Event()
+        self._ui = UiDispatcher(page, self._shutdown)
+        self._voice_recording = False
+        self._voice_busy = False
+        self._voice_stop = None
+        self.wake_listener = None
         self.rag_system = None
         self.is_processing = False
         
@@ -127,6 +107,8 @@ class AviationRAGApp:
         
         self._setup_page()
         self._build_ui()
+        # Storage is already loaded; populate the sidebar on the first display.
+        self._update_chat_list()
         # АВТОМАТИЧЕСКИЙ ЗАПУСК wake-listener «Бутуз»
         try:
             from voice_input import WakeWordListener
@@ -138,11 +120,6 @@ class AviationRAGApp:
             self.wake_listener = None
         self.page.update()
         self._load_current_chat()
-        
-        self._voice_recording = False
-        self._voice_busy = False
-        self._voice_stop = None
-        self.wake_listener = None
         
         # ПРОВЕРКА ПЕРВОГО ЗАПУСКА (вызываем напрямую, без потока!)
         prl_path = self._load_prl_path()
@@ -204,136 +181,91 @@ class AviationRAGApp:
             "main": "SF Pro Display" if platform.system() == "Darwin" else "Segoe UI",
         }
         self.page.spacing = 0
-        
+        self.page.on_disconnect = self._on_page_closed
+        self.page.on_close = self._on_page_closed
+        self.page.window.prevent_close = True
+        self.page.window.on_event = self._on_window_event
+
         if "icon" in self.assets:
             self.page.window.icon = self.assets["icon"]
 
-    def _show_code_approval_dialog(self, code: str, job: RequestJob | None = None) -> bool:
-        """Показывает диалог подтверждения выполнения кода"""
-        import threading
-        
-        result = {"approved": False}
-        event = threading.Event()
-        dlg = None
-        
-        def on_approve(e):
-            result["approved"] = True
-            event.set()
-            try:
-                self.page.close(dlg)
-            except Exception:
-                pass
-        
-        def on_cancel(e):
-            result["approved"] = False
-            event.set()
-            try:
-                self.page.close(dlg)
-            except Exception:
-                pass
-        
-        # Прокручиваемый блок с кодом (ВМЕСТО max_height, которого нет в Flet 0.28)
-        code_box = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text(
-                        code,
-                        font_family="monospace",
-                        size=12,
-                        color="#e2e8f0",
-                        selectable=True,
-                    ),
-                ],
-                scroll=ft.ScrollMode.AUTO,   # 🆕 прокрутка для длинного кода
-                height=350,                  # 🆕 фиксированная высота области
-                spacing=0,
-            ),
-            bgcolor="#1e293b",
-            padding=15,
-            border_radius=8,
-        )
-        
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Row([
-                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="#f59e0b", size=28),
-                ft.Text("Агент хочет изменить оригинал файла", size=18, weight=ft.FontWeight.BOLD),
-            ], spacing=10),
-            content=ft.Container(
-                content=ft.Column([
-                    ft.Text("Проверьте путь и новое содержимое файла:", size=14, color=self.theme["text_secondary"]),
-                    ft.Container(height=10),
-                    code_box,
-                    ft.Container(height=15),
-                    ft.Text(
-                        "Изменение будет записано в оригинал файла; перед записью создаётся резервная копия.",
-                        size=12,
-                        color="#f59e0b",
-                        italic=True,
-                    ),
-                ], tight=True, spacing=5),
-                width=700,
-                padding=20,
-            ),
-            actions=[
-                ft.TextButton(
-                    "❌ Отмена",
-                    on_click=on_cancel,
-                    style=ft.ButtonStyle(color="#94a3b8"),
-                ),
-                ft.ElevatedButton(
-                    "✅ Запустить код",
-                    on_click=on_approve,
-                    bgcolor="#10b981",
-                    color="white",
-                ),
-            ],
-        )
-        
-        self.page.open(dlg)
-        
-        # Ждём ответа максимум 2 минуты, иначе авто-отмена (агент не зависнет навсегда)
-        if job:
-            def cancel_dialog() -> None:
-                result["approved"] = False
-                event.set()
-                self.page.run_thread(self.page.close, dlg)
-            job.token.on_cancel(cancel_dialog)
-        completed = event.wait(timeout=120)
-        if not completed:
-            self.page.run_thread(self.page.close, dlg)
-        
-        return result["approved"]
+    @property
+    def _ui_dispatch(self) -> UiDispatcher:
+        if not hasattr(self, "_ui"):
+            self._ui = UiDispatcher(self.page, self._shutdown)
+        return self._ui
 
-    def _make_icon_button(self, icon_path, on_click, tooltip="", size=32, bgcolor=None):
-        """Создает кнопку с кастомной PNG-иконкой"""
-        img = ft.Image(
-            src=icon_path,
-            width=size,
-            height=size,
-            fit=ft.ImageFit.CONTAIN, # Сохраняет пропорции
-            tooltip=tooltip,
-        )
-        return ft.Container(
-            content=img,
-            on_click=on_click,
-            ink=True,  # Эффект нажатия (волна)
-            border_radius=8,  # Слегка скругленные углы выглядят лучше для кастомных иконок
-            padding=4,  # Уменьшили отступ, чтобы иконка была крупнее
-            bgcolor=bgcolor,
-        )
+    def _run_ui_thread(self, action: Callable[..., Any], *args: Any) -> bool:
+        return self._ui_dispatch.run_thread(action, *args)
+
+    def _shutdown(self, _: Any = None) -> None:
+        if not hasattr(self, "_shutdown_started"):
+            self._shutdown_started = threading.Event()
+        if self._shutdown_started.is_set():
+            return
+        self._shutdown_started.set()
+        if hasattr(self, 'project_browser'):
+            self.project_browser.cancel()
+        self._ui_dispatch.close()
+        self._jobs.close()
+        self.is_processing = False
+        if getattr(self, "_voice_stop", None) is not None:
+            self._voice_stop.set()
+        if getattr(self, "wake_listener", None) is not None:
+            self.wake_listener.stop()
+
+    async def _on_page_closed(self, _: Any) -> None:
+        self._shutdown()
+
+    async def _on_window_event(self, event: ft.WindowEvent) -> None:
+        if event.type == ft.WindowEventType.CLOSE:
+            self._shutdown()
+            self.page.window.destroy()
+
+    def _show_file_approval_dialog(self, content: str, job: RequestJob) -> bool:
+        from agent_files_ui import FileApproval
+        return FileApproval(
+            self.page, job,
+            lambda: self._jobs.current is job and self.chat_manager.current_chat_id == job.chat_id,
+            ui=self._ui_dispatch,
+        ).wait(content)
+
+    def _set_activity(self, event: ActivityEvent) -> None:
+        self.activity.apply(event)
+        if hasattr(self, "send_button"):
+            self.send_button.disabled = self.is_processing
+            self.stop_button.visible = self.is_processing
+        if hasattr(self, "gost_button"):
+            self.gost_button.disabled = self.is_processing
+        if hasattr(self, "project_button"):
+            self.project_button.disabled = self.is_processing
+        if not getattr(self, "_has_streamed_text", True) and hasattr(self, "_progress_text"):
+            self._progress_text.value = event.detail or self.activity.text.value
+            self._progress_ring.visible = self.activity.spinner.visible
+
+    def _send_welcome_example(self, mode: str, text: str) -> None:
+        self.agent_mode = mode == "AGENT"
+        self.agent_checkbox.value = self.agent_mode
+        self._send_example(text)
+
+    def _handle_cancel_click(self, _: ft.ControlEvent) -> None:
+        self._cancel_active_job()
+        self._cleanup_cancelled_stream()
+        self._set_activity(ActivityEvent("cancelled"))
+        self.page.update()
+
+    def _toggle_agent_label(self, _: ft.ControlEvent) -> None:
+        self.agent_mode = not bool(self.agent_checkbox.value)
+        self.agent_checkbox.value = self.agent_mode
+        self.page.update()
 
     def _build_ui(self):
         self.chat_list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=4)
         
         btn_accent_style = ft.ButtonStyle(
-            bgcolor=self.theme["accent"], color="#ffffff", shape=ft.RoundedRectangleBorder(radius=10)
+            bgcolor="#26384d", color="#ffffff", shape=ft.RoundedRectangleBorder(radius=10)
         )
         btn_text_style = ft.ButtonStyle(color=self.theme["text_primary"])
-        
-        logo_control = None
-        if "logo" in self.assets:
-            logo_control = ft.Image(src=self.assets["logo"], height=60, width=60)
         
         self.sidebar = ft.Container(
             content=ft.Column([
@@ -343,22 +275,23 @@ class AviationRAGApp:
                         ft.Container(
                             content=ft.Image(
                                 src=self.assets["icon"] if "icon" in self.assets else self.assets.get("logo"),
-                                height=140,  # Ещё больше
-                                width=140,
+                                height=90,
+                                width=90,
                                 fit=ft.ImageFit.CONTAIN,
                             ),
                             alignment=ft.alignment.center,  # Центрируем контейнер
                             width=float("inf"),  # Занимает всю ширину
                         ),
-                        ft.Text("Aviation RAG", size=22, weight=ft.FontWeight.BOLD, color=self.theme["text_primary"], text_align=ft.TextAlign.CENTER),
-                        ft.Text("AI Engine v1.0", size=12, color=self.theme["text_secondary"], text_align=ft.TextAlign.CENTER),
+                        ft.Text(ASSISTANT_NAME, size=22, weight=ft.FontWeight.BOLD, color=self.theme["text_primary"], text_align=ft.TextAlign.CENTER),
+                        ft.Text("Ваш локальный помощник", size=12, color=self.theme["text_secondary"], text_align=ft.TextAlign.CENTER),
                     ], spacing=12, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     padding=ft.padding.symmetric(horizontal=16, vertical=20),
                     width=float("inf"),  # Контейнер на всю ширину сайдбара
                 ),
                 ft.Divider(height=1, color=self.theme["border"]),
                 ft.ElevatedButton(
-                    "＋ Новый чат",
+                    content=ft.Row([brand_icon("new_chat"), ft.Text("Новый чат", color="#e6edf7")],
+                                   alignment=ft.MainAxisAlignment.CENTER, spacing=10, tight=True),
                     on_click=self._handle_new_chat,
                     style=btn_accent_style,
                     width=float("inf"),
@@ -369,12 +302,7 @@ class AviationRAGApp:
                 ft.Container(
                     content=ft.Row(
                         [
-                            ft.Image(
-                                src=self.assets["settings"],
-                                width=20,
-                                height=20,
-                                fit=ft.ImageFit.CONTAIN,
-                            ) if "settings" in self.assets else ft.Icon(ft.Icons.SETTINGS, size=20, color=self.theme["text_primary"]),
+                            brand_icon("settings", 22),
                             ft.Text("Настройки", size=13, color=self.theme["text_primary"]),
                         ],
                         spacing=8,
@@ -391,37 +319,23 @@ class AviationRAGApp:
             bgcolor=self.theme["bg_sidebar"],
         )
         
-        self.status_text = ft.Text("● Готов", size=13, weight=ft.FontWeight.BOLD, color=self.theme["status_ready"])
-        self.model_label = ft.Text(f"{self.current_model_display}  •  PRL-27СМ RAG", size=14, weight=ft.FontWeight.BOLD, color=self.theme["text_secondary"])
-        
-        self.header = ft.Container(
-            content=ft.Row([self.model_label, ft.Container(expand=True), self.status_text]),
-            padding=ft.padding.symmetric(horizontal=20, vertical=12),
+        self.activity = ActivityView()
+        self.status_text = self.activity.text
+        self.model_label = ft.Text(
+            self.current_model_display, size=12, color=self.theme["text_secondary"],
+            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
         )
-        
+        self.header = ft.Container(
+            content=ft.Row([
+                brand_icon("chat", 20), self.model_label, self.activity.control,
+            ], spacing=10),
+            padding=ft.padding.symmetric(horizontal=22, vertical=13),
+        )
+
         self.messages_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=12)
         
-        self.welcome = ft.Container(
-            content=ft.Column([
-                # Логотип вместо самолётика
-                ft.Image(
-                    src=self.assets["logo"],
-                    height=120,
-                    width=120,
-                    fit=ft.ImageFit.CONTAIN,
-                ) if "logo" in self.assets else ft.Text("✈️", size=80),
-                ft.Text("Чем могу помочь?", size=36, weight=ft.FontWeight.BOLD, color=self.theme["text_primary"]),
-                ft.Text("Задайте вопрос по документации ПРЛ-27СМ", size=16, color=self.theme["text_secondary"]),
-                ft.Container(height=40),
-                ft.Row([
-                    ft.ElevatedButton("Как включить излучение шкафа 276ГГ02?", on_click=lambda e: self._send_example(e.control.text), width=320, height=60),
-                    ft.ElevatedButton("Что такое сигнал PPS?", on_click=lambda e: self._send_example(e.control.text), width=320, height=60),
-                ], wrap=True, spacing=12, alignment=ft.MainAxisAlignment.CENTER),
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=12),
-            expand=True,
-            alignment=ft.alignment.center,
-        )
-        
+        self.welcome = welcome_panel(self._send_welcome_example)
+
         self.chat_stack = ft.Stack([self.welcome, self.messages_column], expand=True)
         
         self.chat_area = ft.Container(
@@ -430,7 +344,7 @@ class AviationRAGApp:
         )
         
         self.input_field = ft.TextField(
-            hint_text="Message RAG Assistant...",
+            hint_text="Напишите BUTUZIK.AI или прикрепите файл…",
             multiline=True,
             min_lines=1,
             max_lines=20,  # Увеличили с 5 до 20
@@ -449,6 +363,11 @@ class AviationRAGApp:
         self.folder_picker = ft.FilePicker(on_result=self._on_folder_pick_result)
         self.page.overlay.append(self.folder_picker)
         self._folder_pick_target = None
+        from project_picker_ui import ProjectFolderBrowser
+        self.project_browser = ProjectFolderBrowser(
+            self.page, lambda: self.chat_manager.current_chat_id,
+            self._begin_project_import, self._ui_dispatch,
+        )
         
         # FilePicker для файлов БОЛЬШЕ НЕ НУЖЕН:
         # прикрепление файлов теперь работает через встроенный браузер _open_file_browser()
@@ -459,42 +378,67 @@ class AviationRAGApp:
         self.attachments_row = ft.Row([], wrap=True, spacing=4, visible=False)
         
         # КНОПКА МИКРОФОНА (голосовой ввод)
-        self.mic_button = ft.IconButton(
-            icon=ft.Icons.MIC,
-            icon_size=28,
-            tooltip="Голосовой ввод: нажми — запись, нажми ещё — стоп",
-            icon_color=self.theme["text_primary"],
-            on_click=self._toggle_voice_input,
+        self.mic_button = icon_button(
+            "mic", "Голосовой ввод: нажать для записи, ещё раз — завершить", self._toggle_voice_input,
         )
-        
+
         # ЧЕКБОКС РЕЖИМА АГЕНТА
         self.agent_checkbox = ft.Checkbox(
-            label="Режим Агента (документы и файлы)",
+            semantics_label="Режим агента",
+            width=34,
             value=False,
             active_color="#f59e0b",
             on_change=lambda e: setattr(self, 'agent_mode', e.control.value)
         )
+        # Keep text outside Checkbox: its native label ignores our font sizing on macOS.
+        self.agent_label = ft.TextButton(
+            content=ft.Text("Режим агента", size=13, weight=ft.FontWeight.NORMAL,
+                            color=self.theme["text_primary"]),
+            on_click=self._toggle_agent_label,
+            style=ft.ButtonStyle(padding=ft.padding.symmetric(horizontal=4)),
+            tooltip="Включить или выключить режим агента",
+        )
+        self.agent_toggle = ft.Row([self.agent_checkbox, self.agent_label], tight=True, spacing=0)
         
+        from agent_files_ui import AgentFilesUI
+        self.agent_files = AgentFilesUI(
+            self.page, lambda: self.chat_manager.current_chat_id,
+            lambda message: self._show_toast(message), ui=self._ui_dispatch,
+        )
+        self.files_button = ft.TextButton(
+            content=ft.Row([brand_icon("files", 22), ft.Text("Файлы чата")], tight=True, spacing=7),
+            width=155,
+            on_click=self.agent_files.open,
+            tooltip="Результаты агента: открыть папку или сохранить файл в удобное место",
+        )
+        self.gost_button = ft.TextButton(
+            content=ft.Row([brand_icon("files", 20), ft.Text("Оформить по ГОСТ", size=13)], tight=True, spacing=7),
+            on_click=self._handle_gost_click,
+            tooltip="Прикрепите один DOC или DOCX: оформление, просмотр страниц и сохранение новой копии",
+        )
+        self.project_button = ft.TextButton(
+            content=ft.Row([brand_icon("files", 20), ft.Text("Открыть проект", size=13)], tight=True, spacing=7),
+            on_click=self._handle_project_click,
+            tooltip="Выбрать папку кода: копия в этом чате, исходная папка не изменяется",
+        )
+        self.project_status = ft.Text('', size=12, color=self.theme['text_secondary'], visible=False,
+                                      max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
+
+        self.send_button = icon_button("send", "Отправить сообщение", self._handle_send, primary=True)
+        self.stop_button = icon_button("stop", "Остановить ответ", self._handle_cancel_click)
+        self.stop_button.visible = False
+
         self.input_area = ft.Container(
             content=ft.Column([
                 self.attachments_row,
-                self.agent_checkbox,   # ЧЕКБОКС (над полем ввода)
+                ft.Row([self.agent_toggle, self.files_button, self.project_button, self.gost_button], spacing=12, wrap=True),
+                self.project_status,
                 ft.Row([
                     self.mic_button,
-                    self._make_icon_button(
-                        self.assets.get("add", self.assets.get("new_chat")),
-                        on_click=self._handle_attach_click,
-                        tooltip="Прикрепить документ",
-                        size=36,
-                    ),
+                    icon_button("attach", "Прикрепить документ или изображение", self._handle_attach_click),
                     self.input_field,
-                    self._make_icon_button(
-                        self.assets["send"],
-                        on_click=self._handle_send,
-                        tooltip="Отправить",
-                        size=32,
-                        bgcolor=self.theme["accent"],
-                    ),
+                    self.stop_button,
+                    self.send_button,
                 ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.END)
             ], spacing=8),
             padding=ft.padding.all(20),
@@ -613,32 +557,166 @@ class AviationRAGApp:
         # Используем встроенный браузер файлов
         self._open_file_browser()
 
+    def _handle_project_click(self, _: Any) -> None:
+        if not self.is_processing:
+            self.project_browser.open()
+
+    def _begin_project_import(self, chat_id: str, path: Path) -> None:
+        if (self.is_processing or not self._ui_dispatch.active
+                or self.chat_manager.current_chat_id != chat_id):
+            return
+        job = self._jobs.start(chat_id)
+        self.is_processing = True
+        self._set_activity(ActivityEvent('working', 'Копирую и проверяю файлы проекта', 'AGENT'))
+        self.page.update()
+        self._ui_dispatch.run_task(self._import_project_folder, job, path)
+
+    async def _import_project_folder(self, job: RequestJob, source: Path) -> None:
+        from file_tools import workspace_for_chat
+        from project_workspace import import_project
+        try:
+            info = await asyncio.to_thread(lambda: import_project(workspace_for_chat(job.chat_id), source, job.token))
+            if self._jobs.is_current(job) and self.chat_manager.current_chat_id == job.chat_id:
+                self.agent_mode = True
+                self.agent_checkbox.value = True
+                self._show_toast(f'Проект «{info.name}»: {info.files} файлов. Пропущено элементов: {info.skipped}. '
+                                 'Работаем с копией; напишите задачу.')
+                await self._refresh_projects(job.chat_id)
+        except Exception as exc:
+            if self._jobs.is_current(job):
+                self._show_toast(f'Проект не загружен: {exc}')
+        finally:
+            if self._jobs.is_current(job):
+                self._jobs.finish(job)
+                self.is_processing = False
+                self._set_activity(ActivityEvent('ready'))
+                self.page.update()
+
+    async def _refresh_projects(self, chat_id: str) -> None:
+        from file_tools import workspace_for_chat
+        from project_workspace import projects
+        try:
+            items = await asyncio.to_thread(lambda: projects(workspace_for_chat(chat_id)))
+        except Exception as exc:
+            if self.chat_manager.current_chat_id == chat_id and self._ui_dispatch.active:
+                self._show_toast(f'Не удалось прочитать список проектов: {exc}')
+            return
+        if self.chat_manager.current_chat_id != chat_id or not self._ui_dispatch.active:
+            return
+        self.project_status.value = 'Проекты чата: ' + ', '.join(f'{p.name} ({p.files} файлов)' for p in items)
+        self.project_status.visible = bool(items)
+        self.page.update()
+
+    def _handle_gost_click(self, e: Any) -> None:
+        if self.is_processing:
+            return
+        documents = [item for item in getattr(self, '_pending_attachments', [])
+                     if Path(item['path']).suffix.lower() in {'.doc', '.docx'}]
+        if len(documents) != 1:
+            self._show_toast('Прикрепите один исходный DOC или DOCX. PDF пока не поддерживается оформлением.')
+            return
+        chat_id = self.chat_manager.current_chat_id
+        expected = [dict(item) for item in getattr(self, '_pending_attachments', [])]
+        kind = ft.Dropdown(label='Вид документа для отчёта покрытия', value='unconfirmed',
+                           options=[ft.dropdown.Option('unconfirmed', 'Не определён — требуется проверка'),
+                                    ft.dropdown.Option('technical_specifications', 'Технические условия')], width=490)
+
+        def start(event: Any) -> None:
+            self.page.close(dialog)
+            if (self.is_processing or self.chat_manager.current_chat_id != chat_id or
+                    getattr(self, '_pending_attachments', []) != expected):
+                self._show_toast('Чат или вложения изменились; выберите документ заново.')
+                return
+            self._handle_send(event, document_name=documents[0]['name'], document_kind=kind.value or 'unconfirmed')
+
+        dialog = ft.AlertDialog(modal=True, title=ft.Text('Область проверки ГОСТ'),
+            content=ft.Column([kind, ft.Text(
+                'Оформление использует проверенный профиль Р 2.105 / Р 2.104. '
+                'Во вкладке «Покрытие ГОСТ» будут показаны источники и непроверенные требования. '
+                'Наличие источника ГОСТ 2.114 и ограничения проверки содержания ТУ указаны в отчёте.', size=13)],
+                tight=True, width=510),
+            actions=[ft.TextButton('Отмена',on_click=lambda _: self.page.close(dialog)),
+                     ft.ElevatedButton('Подготовить документ',on_click=start)])
+        self.page.open(dialog)
+
     def _queue_job_ui(self, job: RequestJob, action: Callable[..., Any], *args: Any) -> None:
+        if not self._jobs.is_current(job) or not self._ui_dispatch.active:
+            return
         def apply() -> None:
             if self.chat_manager.current_chat_id == job.chat_id:
                 action(*args)
-        self.page.run_thread(self._jobs.apply, job, apply)
+        self._run_ui_thread(self._jobs.apply, job, apply)
+
+    def _apply_activity(self, event: ActivityEvent) -> None:
+        self._set_activity(event)
+        self.page.update()
+
+    def _queue_activity(self, job: RequestJob, event: ActivityEvent) -> None:
+        if not self._jobs.is_current(job) or not self._ui_dispatch.active:
+            return
+        def apply() -> None:
+            def update() -> None:
+                if self.chat_manager.current_chat_id == job.chat_id:
+                    self._apply_activity(event)
+            self._jobs.apply(job, update)
+        self._ui_dispatch.post(apply)
 
     def _complete_job(self, job: RequestJob, response: str, sources: list[str]) -> None:
         self._finalize_streaming_message(response, sources, job.chat_id)
         self._jobs.finish(job)
 
+    def _fail_job(self, job: RequestJob, response: str,
+                  retry_attachments: list[dict[str, str]]) -> None:
+        if retry_attachments:
+            pending = list(getattr(self, "_pending_attachments", []))
+            existing = {item["path"] for item in pending}
+            pending.extend(dict(item) for item in retry_attachments if item["path"] not in existing)
+            self._pending_attachments = pending
+            self._update_pending_attachments_display()
+        self._complete_job(job, response, [])
+        self._apply_activity(ActivityEvent("error", "Проверьте сообщение об ошибке"))
+
     def _cancel_active_job(self) -> None:
+        if hasattr(self, 'project_browser'):
+            self.project_browser.cancel()
         self._jobs.cancel()
         self.is_processing = False
-        self.status_text.value = "● Готов"
-        self.status_text.color = self.theme["status_ready"]
+        self._set_activity(ActivityEvent("ready"))
 
     def _approve_for_job(self, job: RequestJob, content: str) -> bool:
-        if job.token.get("cancelled") or self.chat_manager.current_chat_id != job.chat_id:
+        if (not self._jobs.is_current(job) or not self._ui_dispatch.active
+                or self.chat_manager.current_chat_id != job.chat_id):
             return False
-        return self._show_code_approval_dialog(content, job)
+        self._queue_activity(job, ActivityEvent("approval", route="AGENT"))
+        approved = self._show_file_approval_dialog(content, job)
+        self._queue_activity(job, ActivityEvent("working", route="AGENT"))
+        return approved
 
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
-                 history: list[dict[str, Any]]) -> None:
+                 history: list[dict[str, Any]], document_name: str | None = None,
+                 document_kind: str = 'unconfirmed') -> None:
         try:
-            if job.token.get("cancelled"):
+            if not self._ui_dispatch.active or not self._jobs.is_current(job):
+                return
+            if document_name is not None:
+                from document_approval_ui import DocumentApproval
+                from document_jobs import create_document
+                source = next(item for item in attachments if item['name'] == document_name)
+                self._queue_job_ui(job, self._add_streaming_placeholder)
+
+                def approve_document(proposal: Any) -> bool:
+                    return DocumentApproval(
+                        self.page, job,
+                        lambda: self._jobs.is_current(job) and self.chat_manager.current_chat_id == job.chat_id,
+                        proposal, ui=self._ui_dispatch,
+                    ).wait('Оформление документа', timeout=600)
+
+                outcome = create_document(
+                    job.chat_id, source, approve_document, job.token,
+                    lambda event: self._queue_activity(job, event), document_kind=document_kind)
+                if not job.token.get('cancelled'):
+                    self._queue_job_ui(job, self._complete_job, job, outcome.render(), [])
                 return
             rag = self.rag_system
             if rag is None or rag.model_name != model_name:
@@ -670,13 +748,19 @@ class AviationRAGApp:
                 user_context=user_context or None,
                 recent_file_context=self._chat_file_contexts.get(job.chat_id),
                 attachments=attachments, agent_mode=agent_mode,
-                approve=lambda content: self._approve_for_job(job, content))
+                approve=lambda content: self._approve_for_job(job, content),
+                on_activity=lambda event: self._queue_activity(job, event))
             if not job.token.get("cancelled"):
                 self._queue_job_ui(job, self._complete_job, job, response, sources)
         except Exception as exc:
-            logger.error("Request failed: %s", type(exc).__name__)
+            if job.token.get("cancelled") or not self._ui_dispatch.active:
+                return
+            logger.error("Request failed type=%s model=%s status=%s",
+                         type(exc).__name__, model_name,
+                         getattr(exc.__cause__ or exc, "status_code", "unknown"))
             if not job.token.get("cancelled"):
-                self._queue_job_ui(job, self._complete_job, job, f"Ошибка: {exc}", [])
+                self._queue_job_ui(job, self._fail_job, job, f"Ошибка: {exc}",
+                                   attachments if isinstance(exc, VisionAnalysisError) or document_name is not None else [])
 
     def _cleanup_cancelled_stream(self):
         """Очищает интерфейс, если стриминг был прерван удалением чата"""
@@ -684,8 +768,7 @@ class AviationRAGApp:
             self.messages_column.controls.remove(self._streaming_row)
         
         self.is_processing = False
-        self.status_text.value = "● Готов"
-        self.status_text.color = self.theme["status_ready"]
+        self._set_activity(ActivityEvent("ready"))
         self.page.update()
 
     def _update_pending_attachments_display(self):
@@ -797,9 +880,9 @@ class AviationRAGApp:
         time.sleep(0.3)  # даём Flutter дочиста закрыть окно браузера папок
         try:
             if target == 'first':
-                self.page.run_thread(self._show_first_launch_dialog)
+                self._run_ui_thread(self._show_first_launch_dialog)
             else:
-                self.page.run_thread(self._show_settings, None)
+                self._run_ui_thread(self._show_settings, None)
         except Exception as ex:
             print(f"[DEBUG] Не удалось снова открыть окно: {ex}", flush=True)
 
@@ -817,6 +900,12 @@ class AviationRAGApp:
             border_color=self.theme["border"],
         )
         list_column = ft.Column([], scroll=ft.ScrollMode.AUTO, expand=True, spacing=2)
+
+        def select_document(path: Path) -> None:
+            # Page.open owns dialogs separately from page.overlay in Flet 0.28.
+            # Close the exact picker captured by this callback, not a global search.
+            self.page.close(browser_dlg)
+            self._select_file(str(path), path.name)
         
         def refresh(*_):
             p = Path(path_field.value).expanduser()
@@ -849,7 +938,7 @@ class AviationRAGApp:
             
             # Потом файлы
             CODE_EXTS = ['.py', '.cpp', '.c', '.h', '.hpp', '.js', '.ts', '.sh', '.json', '.xml', '.ini', '.cfg']
-            allowed_exts = ['.pdf', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'] + CODE_EXTS
+            allowed_exts = ['.pdf', '.doc', '.docx', '.txt', '.md', '.png', '.jpg', '.jpeg', '.webp'] + CODE_EXTS
             files_found = 0
             
             for item in items:
@@ -867,7 +956,7 @@ class AviationRAGApp:
                                 padding=ft.padding.symmetric(horizontal=8, vertical=6),
                                 border_radius=6,
                                 ink=True,
-                                on_click=lambda e, ff=item: self._select_file(str(ff), ff.name),
+                                on_click=lambda e, ff=item: select_document(ff),
                             )
                         )
             
@@ -926,14 +1015,6 @@ class AviationRAGApp:
     def _select_file(self, file_path: str, file_name: str):
         """Обработчик выбора файла в браузере"""
         print(f"[DEBUG] Выбран файл: {file_name}", flush=True)
-        
-        # Закрываем браузер
-        # browser_dlg доступен из замыкания, но нам нужно его закрыть
-        # Для этого найдём его в overlay страницы
-        for overlay in self.page.overlay:
-            if isinstance(overlay, ft.AlertDialog) and overlay.title and "Выбор файла" in (overlay.title.value if hasattr(overlay.title, 'value') else ""):
-                self.page.close(overlay)
-                break
         
         # Добавляем файл в pending_attachments
         if not hasattr(self, '_pending_attachments'):
@@ -1055,16 +1136,13 @@ class AviationRAGApp:
             chat_row = ft.Row(
                 [
                     ft.Container(
-                        content=ft.Text(name, size=13, color="#ffffff" if is_current else self.theme["text_primary"]),
+                        content=ft.Text(name, size=13, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS,
+                                        color=self.theme["text_primary"]),
                         expand=True,
                         padding=ft.padding.symmetric(horizontal=8, vertical=4),
                     ),
-                    self._make_icon_button(
-                        self.assets["clear"],
-                        on_click=lambda e, cid=chat_id: self._delete_chat(cid),
-                        tooltip="Удалить чат",
-                        size=24, # Сделали крупнее
-                    ),
+                    icon_button("delete", "Удалить чат",
+                                lambda e, cid=chat_id: self._delete_chat(cid), size=20),
                 ],
                 spacing=0,
             )
@@ -1072,7 +1150,8 @@ class AviationRAGApp:
             # Обертка для клика по всей строке
             chat_container = ft.Container(
                 content=chat_row,
-                bgcolor=self.theme["accent"] if is_current else None,
+                bgcolor="#213952" if is_current else None,
+                border=ft.border.all(1, "#426480") if is_current else None,
                 border_radius=8,
                 on_click=lambda e, cid=chat_id: (
                     self._show_toast("Дождитесь завершения ответа!", color="#f59e0b") 
@@ -1089,32 +1168,15 @@ class AviationRAGApp:
 
     def _delete_chat(self, chat_id):
         
-        #  ОСТАНОВКА ГЕНЕРАЦИИ ПРИ УДАЛЕНИИ ЧАТА
-        if chat_id == getattr(self, '_streaming_chat_id', None):
-            self._jobs.cancel()
-            print(f"[DELETE] Останавливаем генерацию при удалении чата", flush=True)
-            if hasattr(self, '_stream_cancel_flag'):
-                self._stream_cancel_flag["cancelled"] = True
-            
-            if hasattr(self, '_streaming_row') and self._streaming_row in self.messages_column.controls:
-                self.messages_column.controls.remove(self._streaming_row)
-            
-            self.is_processing = False
-            self.status_text.value = "● Готов"
-            self.status_text.color = self.theme["status_ready"]
-            self.page.update()
-        
         chat_name = self.chat_manager.chats.get(chat_id, {}).get("name", "этот чат")
         
         def confirm_delete(e):
             self.page.close(dlg)
             
-            # УСТАНАВЛИВАЕМ ФЛАГ ОТМЕНЫ, если удаляем чат, в котором идёт генерация
-            if chat_id == getattr(self, '_streaming_chat_id', None):
-                print(f"[STREAM] Устанавливаем флаг отмены для чата {chat_id}", flush=True)
-                if hasattr(self, '_stream_cancel_flag'):
-                    self._stream_cancel_flag["cancelled"] = True
-            
+            current = self._jobs.current
+            if current is not None and current.chat_id == chat_id:
+                self._cancel_active_job()
+
             # Логика переключения на другой чат
             if chat_id == self.chat_manager.current_chat_id:
                 other_chats = [cid for cid in self.chat_manager.chats.keys() if cid != chat_id]
@@ -1165,8 +1227,7 @@ class AviationRAGApp:
                 print(f"[SWITCH] Удален streaming placeholder", flush=True)
             
             self.is_processing = False
-            self.status_text.value = "● Готов"
-            self.status_text.color = self.theme["status_ready"]
+            self._set_activity(ActivityEvent("ready"))
             self.page.update()
         
         # Теперь переключаемся
@@ -1177,9 +1238,11 @@ class AviationRAGApp:
     def _load_current_chat(self):
         chat = self.chat_manager.get_current_chat()
         self.messages_column.controls.clear()
-        
+        self.messages_column.visible = bool(chat and chat["messages"])
+
         if chat and chat["messages"]:
             self.welcome.visible = False
+            self.messages_column.visible = True
             for msg in chat["messages"]:
                 self._add_message_to_ui(
                     msg["role"], 
@@ -1189,6 +1252,10 @@ class AviationRAGApp:
                 )
         else:
             self.welcome.visible = True
+        self.project_status.visible = False
+        self.project_browser.cancel()
+        if self.chat_manager.current_chat_id:
+            self._ui_dispatch.run_task(self._refresh_projects, self.chat_manager.current_chat_id)
         self.page.update()
 
     def _add_message_to_ui(self, role, content, attachments=None, sources=None):
@@ -1274,11 +1341,13 @@ class AviationRAGApp:
         
         self.messages_column.controls.append(row)
         self.welcome.visible = False
+        self.messages_column.visible = True
         self.page.update()
         self.messages_column.scroll_to(offset=-1, duration=300)
 
-    def _handle_send(self, e):
-        text = self.input_field.value.strip()
+    def _handle_send(self, e, document_name: str | None = None, document_kind: str = 'unconfirmed'):
+        text = (f'Оформить документ «{document_name}» по ГОСТ Р 2.105-2019 / Р 2.104-2023'
+                if document_name is not None else self.input_field.value.strip())
         if not text or self.is_processing:
             if self.is_processing:
                 self._show_toast("⏳ Подождите завершения текущего ответа!", color="#f59e0b")
@@ -1287,7 +1356,8 @@ class AviationRAGApp:
         # Получаем прикреплённые файлы
         pending_attachments = getattr(self, '_pending_attachments', [])
         
-        self.input_field.value = ""
+        if document_name is None:
+            self.input_field.value = ""
         self._pending_attachments = []  # Очищаем список прикреплённых файлов
         self._update_pending_attachments_display()
         
@@ -1304,8 +1374,7 @@ class AviationRAGApp:
         self.chat_manager.add_message("user", text, attachments=attachment_names)
         
         self.is_processing = True
-        self.status_text.value = "● Думаю..."
-        self.status_text.color = self.theme["status_busy"]
+        self._set_activity(ActivityEvent("thinking"))
         self.page.update()
         
         chat_id = self.chat_manager.current_chat_id
@@ -1315,7 +1384,8 @@ class AviationRAGApp:
         history = (self.chat_manager.get_current_chat() or {}).get("messages", [])[:-1][-8:]
         threading.Thread(
             target=self._process,
-            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history),
+            args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history,
+                  document_name, document_kind),
             daemon=True
         ).start()
 
@@ -1323,14 +1393,11 @@ class AviationRAGApp:
     
     def _set_mic_state(self, state):
         if state == "rec":
-            self.mic_button.icon = ft.Icons.STOP_CIRCLE
-            self.mic_button.icon_color = "#ef4444"
+            self.mic_button.content = brand_icon("stop")
         elif state == "busy":
-            self.mic_button.icon = ft.Icons.HOURGLASS_TOP
-            self.mic_button.icon_color = "#f59e0b"
+            self.mic_button.content = brand_icon("chat")
         else:
-            self.mic_button.icon = ft.Icons.MIC
-            self.mic_button.icon_color = self.theme["text_primary"]
+            self.mic_button.content = brand_icon("mic")
         self.mic_button.update()
     
     def _toggle_voice_input(self, e):
@@ -1351,15 +1418,15 @@ class AviationRAGApp:
             from voice_input import record_until_stop, transcribe
             audio = record_until_stop(self._voice_stop)
             self._voice_recording = False
-            self.page.run_thread(self._set_mic_state, "busy")
-            self.page.run_thread(self._show_toast, "Распознаю речь (первый запуск может грузить модель)...", "#f59e0b", 4000)
+            self._run_ui_thread(self._set_mic_state, "busy")
+            self._run_ui_thread(self._show_toast, "Распознаю речь (первый запуск может грузить модель)...", "#f59e0b", 4000)
             text = transcribe(audio)
-            self.page.run_thread(self._voice_apply_text, text)
+            self._run_ui_thread(self._voice_apply_text, text)
         except Exception as ex:
             logger.error(f"[VOICE] Ошибка записи: {ex}", exc_info=True)
             self._voice_recording = False
-            self.page.run_thread(self._set_mic_state, "idle")
-            self.page.run_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
+            self._run_ui_thread(self._set_mic_state, "idle")
+            self._run_ui_thread(self._show_toast, f"Ошибка микрофона: {ex}", "#ef4444")
     
     def _voice_apply_text(self, text):
         self._set_mic_state("idle")
@@ -1386,12 +1453,13 @@ class AviationRAGApp:
     
     def _on_wake_word(self):
         """Вызывается ИЗ ПОТОКА СЛУШАТЕЛЯ — паузу ставим сразу, без задержек"""
-        if self._voice_recording or self._voice_busy or self._wake_busy:
+        if (not self._ui_dispatch.active or self.is_processing
+                or self._voice_recording or self._voice_busy or self._wake_busy):
             return
         self._wake_busy = True
         if self.wake_listener:
             self.wake_listener.paused.set()   # мгновенно, в этом же потоке
-        self.page.run_thread(self._wake_ui)
+        self._run_ui_thread(self._wake_ui)
     
     def _wake_ui(self):
         try:
@@ -1416,14 +1484,14 @@ class AviationRAGApp:
             # Если поймали хвост wake-слова или огрызок — слушаем ещё раз
             if text and (_fuzzy_match(text, WAKE_WORDS) or len(text.strip()) < 4):
                 print(f"[VOICE] Пойман хвост wake-слова: '{text}' — слушаю команду заново", flush=True)
-                self.page.run_thread(self._show_toast, "🐶 Слушаю! Скажи команду...", "#f59e0b", 2500)
+                self._run_ui_thread(self._show_toast, "🐶 Слушаю! Скажи команду...", "#f59e0b", 2500)
                 audio = record_until_silence()
                 text = transcribe(audio)
             
-            self.page.run_thread(self._wake_apply, text)
+            self._run_ui_thread(self._wake_apply, text)
         except Exception as ex:
             print(f"[VOICE] Ошибка wake-команды: {ex}", flush=True)
-            self.page.run_thread(self._wake_apply, "")
+            self._run_ui_thread(self._wake_apply, "")
     
     def _wake_apply(self, text):
         if self.wake_listener:
@@ -1484,13 +1552,13 @@ class AviationRAGApp:
                 chat_id = self.chat_manager.current_chat_id or "global"
                 info = add_document(file_path, chat_id=chat_id)
                 info["chat_id"] = chat_id
-                self.page.run_thread(self._on_document_ready, info)
+                self._run_ui_thread(self._on_document_ready, info)
             else:
-                self.page.run_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
+                self._run_ui_thread(self._on_document_ready, {"error": "Модуль document_processor не найден"})
         except Exception as e:
             import traceback
             logger.error(f"Критическая ошибка: {e}", exc_info=True)
-            self.page.run_thread(self._on_document_ready, {"error": str(e)})
+            self._run_ui_thread(self._on_document_ready, {"error": str(e)})
 
     def _on_document_ready(self, info):
         if "error" in info:
@@ -1507,8 +1575,8 @@ class AviationRAGApp:
             
             self.chat_manager.add_attachment(info["filename"], chat_id=info.get("chat_id"))
         
-        self.status_text.value = "● Готов"
-        self.status_text.color = self.theme["status_ready"]
+        if not self.is_processing:
+            self._set_activity(ActivityEvent("ready"))
         self._update_attachments_display()
         self.page.update()
 
@@ -1560,14 +1628,15 @@ class AviationRAGApp:
     
     def _add_streaming_placeholder(self):
         """Добавляет пустое сообщение ассистента в UI"""
-        md = ft.Markdown(
-            value="...",
-            selectable=True,
-            extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-        )
-        
+        self._has_streamed_text = False
+        self._progress_text = ft.Text(self.activity.text.value, size=13, color=self.theme["text_secondary"])
+        self._progress_ring = ft.ProgressRing(width=14, height=14, stroke_width=2, color="#9edcf2")
+        progress = ft.Row([
+            self._progress_ring, self._progress_text,
+        ], spacing=10)
+
         self._streaming_bubble = ft.Container(
-            content=ft.Column([ft.Container(content=md, expand=True)], spacing=2),
+            content=progress,
             bgcolor=self.theme["bg_bubble_ai"],
             padding=16,
             border_radius=16,
@@ -1584,12 +1653,14 @@ class AviationRAGApp:
         
         self.messages_column.controls.append(self._streaming_row)
         self.welcome.visible = False
+        self.messages_column.visible = True
         self.page.update()
         self.messages_column.scroll_to(offset=-1, duration=100)
     
     def _update_streaming_message(self, text):
         """Обновляет текст streaming-сообщения с кнопками копирования кода"""
         if hasattr(self, '_streaming_bubble') and self._streaming_bubble:
+            self._has_streamed_text = True
             content_widgets = self._render_content_with_code_blocks(text)
             self._streaming_bubble.content = ft.Column(content_widgets, spacing=2)
             self.page.update()
@@ -1616,12 +1687,13 @@ class AviationRAGApp:
         self.chat_manager.add_message("assistant", response, sources=sources, chat_id=target_chat_id)
         
         self.is_processing = False
-        self.status_text.value = "● Готов"
-        self.status_text.color = self.theme["status_ready"]
+        self._set_activity(ActivityEvent("ready"))
         self.page.update()
 
     def _show_toast(self, message: str, color: str = "#334155", duration: int = 2500):
         """Показывает компактное toast-уведомление в правом верхнем углу"""
+        if not self._ui_dispatch.active:
+            return
         toast = ft.Container(
             content=ft.Text(message, size=12, color="#ffffff"),
             bgcolor=color,
@@ -1639,9 +1711,11 @@ class AviationRAGApp:
         def remove_toast():
             import time
             time.sleep(duration / 1000)
-            if toast in self.page.overlay:
-                self.page.overlay.remove(toast)
-                self.page.update()
+            def dismiss() -> None:
+                if toast in self.page.overlay:
+                    self.page.overlay.remove(toast)
+                    self.page.update()
+            self._ui_dispatch.post(dismiss)
         
         threading.Thread(target=remove_toast, daemon=True).start()
 
@@ -1649,8 +1723,7 @@ class AviationRAGApp:
         self._add_message_to_ui("assistant", response, sources=sources)
         self.chat_manager.add_message("assistant", response, sources=sources)
         self.is_processing = False
-        self.status_text.value = "● Готов"
-        self.status_text.color = self.theme["status_ready"]
+        self._set_activity(ActivityEvent("ready"))
         self.page.update()
 
     def _save_prl_path(self, path: str):
@@ -1857,7 +1930,7 @@ class AviationRAGApp:
             if chosen and chosen in AVAILABLE_MODELS:
                 self.current_model_display = chosen
                 self.current_model_local = AVAILABLE_MODELS[chosen]
-                self.model_label.value = f"{chosen}  •  PRL-27СМ RAG"
+                self.model_label.value = chosen
                 self.rag_system = None
                 status_lbl.value = f"Применена: {chosen}"
                 print(f"[DEBUG] Модель установлена: {self.current_model_local}", flush=True)
@@ -2019,7 +2092,7 @@ class AviationRAGApp:
                     documents = ingestor.process()
                     
                     if not documents:
-                        self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                        self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                              "Документы не найдены в папке!", "#ef4444", 4000)
                         self.is_processing = False
                         return
@@ -2028,13 +2101,13 @@ class AviationRAGApp:
                     manager = VectorStoreManager()
                     manager.create(documents)
                     
-                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                    self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                           f"Индекс перестроен! {len(documents)} документов", "#10b981", 5000)
                     
                 except Exception as ex:
                     import traceback
                     print(f"[ERROR] Ошибка перестроения: {ex}\n{traceback.format_exc()}", flush=True)
-                    self.page.run_thread(self._close_dialog_and_toast, loading_dlg,
+                    self._run_ui_thread(self._close_dialog_and_toast, loading_dlg,
                                           f"Ошибка: {str(ex)[:60]}...", "#ef4444", 6000)
                 finally:
                     self.is_processing = False
@@ -2043,7 +2116,7 @@ class AviationRAGApp:
             threading.Thread(target=run_rebuild, daemon=True).start()
 
         rebuild_btn = ft.ElevatedButton(
-            "Перестроить индекс PRL-27",
+            "Перестроить индекс",
             icon=ft.Icons.BUILD,
             on_click=rebuild_prl_index,
             style=ft.ButtonStyle(bgcolor="#3b82f6", color="#ffffff"),

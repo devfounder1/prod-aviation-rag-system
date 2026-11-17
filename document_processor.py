@@ -6,6 +6,7 @@ from pathlib import Path
 
 import chromadb
 import pandas as pd
+from retrieval_policy import allow_attachment_fragment
 from config import settings  # <-- ИСПОЛЬЗУЕМ НАШУ СОВРЕМЕННУЮ КОНФИГУРАЦИЮ
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -251,20 +252,32 @@ def retrieve_user_context(query, k=None, chat_id=None):
         if chat_id:
             where_file = {"$and": [{"chat_id": chat_id}, {"filename": target_file}]}
         
-        res = store.query(vec, k, where_file)
+        res = store.query(vec, min(k * 3, store.count()), where_file)
         if res["documents"][0] and len(res["documents"][0]) > 0:
             parts = []
             for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
+                if not allow_attachment_fragment(meta['filename'], doc, query):
+                    continue
+                if any(doc in part for part in parts):
+                    continue
                 parts.append(f"[Источник: {meta['filename']}]\n{doc}")
+                if len(parts) >= k:
+                    break
             return "\n\n".join(parts)
     
-    res = store.query(vec, k, where_clause)
+    res = store.query(vec, min(k * 3, store.count()), where_clause)
     
     parts = []
     for doc, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0]):
         if dist is not None and dist > 0.75:
             continue
+        if not allow_attachment_fragment(meta['filename'], doc, query):
+            continue
+        if any(doc in part for part in parts):
+            continue
         parts.append(f"[Источник: {meta['filename']}]\n{doc}")
+        if len(parts) >= k:
+            break
     return "\n\n".join(parts)
 
 def list_documents(chat_id=None, pending_only=False):

@@ -53,6 +53,8 @@ def check(transport: httpx.BaseTransport | None = None, check_cache: bool = True
             response = client.get(settings.llm_base_url + '/models')
             response.raise_for_status()
             models = [m['id'] for m in response.json().get('data', [])]
+            checks['vision'] = {'status': 'ok' if settings.vision_model_name in models else 'warning',
+                                'configured_model_installed': settings.vision_model_name in models}
             checks['ollama'] = {'status': 'ok' if settings.llm_model_name in models else 'error',
                                 'selected_model_installed': settings.llm_model_name in models,
                                 'detail': 'Start ollama serve; install/select a model before runtime' if settings.llm_model_name not in models else 'Local endpoint ready'}

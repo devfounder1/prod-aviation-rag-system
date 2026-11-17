@@ -52,3 +52,11 @@ def test_ollama_transport_and_tool_calling() -> None:
         assert response.tool_calls[0]["name"] == "lookup"
         assert response.tool_calls[0]["args"] == {"query": "manual"}
     assert len(requests) == 2
+
+
+def test_per_call_token_budget_wins_over_global_default() -> None:
+    llm=create_llm()
+    for expected in (40,4096):
+        payload=llm._get_request_payload([HumanMessage(content='Test')],max_tokens=expected)
+        assert payload['max_tokens']==expected and 'max_completion_tokens' not in payload
+    assert llm._get_request_payload([HumanMessage(content='Test')])['max_tokens']==settings.llm_max_tokens

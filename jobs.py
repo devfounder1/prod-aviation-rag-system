@@ -19,22 +19,30 @@ class CancelToken(dict[str, bool]):
         self._closers: list[Callable[[], None]] = []
 
     def __setitem__(self, key: str, value: bool) -> None:
+        callbacks: list[Callable[[], None]] = []
         with self._lock:
             super().__setitem__(key, value)
             if key == 'cancelled' and value:
                 callbacks, self._closers = self._closers, []
-                for callback in callbacks:
-                    try:
-                        callback()
-                    except Exception:
-                        logger.debug('Cancellation transport already closed')
-
-    def on_cancel(self, callback: Callable[[], None]) -> None:
-        with self._lock:
-            if self.get('cancelled'):
+        for callback in callbacks:
+            try:
                 callback()
-            else:
+            except Exception:
+                logger.debug('Cancellation transport already closed')
+
+    def on_cancel(self, callback: Callable[[], None]) -> Callable[[], None]:
+        with self._lock:
+            cancelled = self.get('cancelled')
+            if not cancelled:
                 self._closers.append(callback)
+        if cancelled:
+            callback()
+
+        def remove() -> None:
+            with self._lock:
+                if callback in self._closers:
+                    self._closers.remove(callback)
+        return remove
 
 
 current_token: ContextVar[CancelToken | None] = ContextVar('request_cancel_token', default=None)
@@ -84,18 +92,33 @@ class JobController:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self.current: RequestJob | None = None
+        self._closed = False
 
     def start(self, chat_id: str) -> RequestJob:
         with self._lock:
-            self.cancel()
+            if self._closed:
+                raise RuntimeError('Application is closed')
+            previous = self.current
             self.current = RequestJob(chat_id)
-            return self.current
+            job = self.current
+        if previous:
+            previous.token['cancelled'] = True
+        return job
 
     def cancel(self) -> None:
         with self._lock:
-            if self.current:
-                self.current.token['cancelled'] = True
-                self.current = None
+            previous, self.current = self.current, None
+        if previous:
+            previous.token['cancelled'] = True
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+        self.cancel()
+
+    def is_current(self, job: RequestJob) -> bool:
+        with self._lock:
+            return not self._closed and self.current is job and not job.token.get('cancelled', False)
 
     def apply(self, job: RequestJob, action: Callable[[], None]) -> bool:
         """Recheck ownership when a queued callback executes, not when submitted."""

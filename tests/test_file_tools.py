@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 import pytest
 import file_tools
 from jobs import CancelToken
@@ -69,3 +70,52 @@ def test_external_edit_is_not_overwritten(tmp_path: Path) -> None:
     original.write_text('external change')
     assert 'changed since' in t['update_attached_file'].invoke({'file_name': 'file.txt', 'new_content': 'bad'})
     assert original.read_text() == 'external change'
+
+
+@pytest.mark.parametrize('name,args', [
+    ('write_file', {'file_path': 'report.txt', 'content': 'new'}),
+    ('append_to_file', {'file_path': 'report.txt', 'text_to_append': 'new'}),
+    ('replace_lines', {'file_path': 'report.txt', 'start_line': 1, 'end_line': 1, 'new_content': 'new'}),
+])
+def test_workspace_mutations_require_one_gui_approval_and_respect_rejection(
+    name: str, args: dict[str, Any],
+) -> None:
+    path = file_tools.workspace_for_chat('a') / 'report.txt'
+    path.write_text('before')
+    seen = []
+    t = tools('a', approve=lambda description: seen.append(description) or False)
+    assert 'rejected' in t[name].invoke(args)
+    assert path.read_text() == 'before'
+    assert len(seen) == 1 and str(path) in seen[0] and 'new' in seen[0]
+    # A model retry in the same request must not reopen the rejected action.
+    assert 'rejected' in t[name].invoke(args)
+    assert len(seen) == 1
+
+
+def test_new_docx_and_cancelled_creation(tmp_path: Path) -> None:
+    from docx import Document
+    seen = []
+    t = tools('a', approve=lambda description: seen.append(description) or True)
+    assert 'Created/updated' in t['write_file'].invoke({'file_path': 'report.docx', 'content': 'Отчёт'})
+    path = file_tools.workspace_for_chat('a') / 'report.docx'
+    assert Document(path).paragraphs[0].text == 'Отчёт'
+    assert len(seen) == 1
+    token = CancelToken()
+    def cancel(_: str) -> bool:
+        token['cancelled'] = True
+        return True
+    t = tools('b', approve=cancel, cancel=token)
+    with pytest.raises(RuntimeError):
+        t['write_file'].invoke({'file_path': 'cancelled.txt', 'content': 'bad'})
+    assert not (file_tools.workspace_for_chat('b') / 'cancelled.txt').exists()
+
+
+def test_external_workspace_change_during_modal_is_not_overwritten() -> None:
+    path = file_tools.workspace_for_chat('a') / 'report.txt'
+    path.write_text('initial')
+    def approve(_: str) -> bool:
+        path.write_text('external edit')
+        return True
+    with pytest.raises(ValueError, match='changed while'):
+        tools('a', approve=approve)['write_file'].invoke({'file_path': 'report.txt', 'content': 'bad'})
+    assert path.read_text() == 'external edit'

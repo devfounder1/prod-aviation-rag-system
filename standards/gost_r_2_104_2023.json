@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "profile_id": "gost-r-2.104-2023-user-copy-2024",
+  "status": "requirements_draft_not_executable",
+  "source": {
+    "designation": "ГОСТ Р 2.104-2023",
+    "title": "Основные надписи",
+    "edition_as_printed": "С Поправками; сентябрь 2024 г.",
+    "sha256": "2fdb4e0c5dac26f5824dbdb8aafd0f20cacc1a0490222e3ee6d016c0b9df2094",
+    "pdf_pages": 23,
+    "page_reference": "One-based PDF pages in the exact source identified by sha256",
+    "current_legal_status_checked": false,
+    "review_method": "Text review of cited clauses and visual review of forms 2 and 2а on PDF pages 16 and 17"
+  },
+  "scope": {
+    "document_kind": "textual_design_document",
+    "requires_document_kind_confirmation": true,
+    "not_a_compliance_certificate": true
+  },
+  "rules": [
+    {
+      "id": "title-block-applicability", "clauses": ["4.2"], "pdf_pages": [3],
+      "modality": "conditional_requirement", "check": "manual_scope_review",
+      "requirement": "Основную надпись используют преимущественно в странично-ориентированных документах; необходимость её выполнения в электронном документе устанавливает организация-разработчик, если иное не оговорено в техническом задании."
+    },
+    {
+      "id": "textual-forms", "clauses": ["5.1"], "pdf_pages": [3, 4],
+      "modality": "requirement_with_scope", "check": "template_and_render",
+      "requirement": "Для текстовых конструкторских документов применяются формы 2, 2а и 2б из приложения Б; конкретную форму выбирают по назначению листа и способу печати."
+    },
+    {
+      "id": "line-types", "clauses": ["5.2"], "pdf_pages": [4],
+      "modality": "requirement", "check": "template_geometry_and_render",
+      "requirement": "Основную надпись, дополнительные графы и рамки выполняют сплошными основными и тонкими линиями.",
+      "dependencies": ["ГОСТ 2.303"]
+    },
+    {
+      "id": "additional-organization-fields", "clauses": ["5.3"], "pdf_pages": [4],
+      "modality": "permission_with_conditions", "check": "manual_scope_review",
+      "requirement": "Дополнительные графы и порядок их заполнения могут быть установлены стандартом организации.",
+      "exceptions": "Для государственного заказчика состав и расположение дополнительных граф согласуют с заказчиком (представительством заказчика). Не удалять необычную графу без проверки её происхождения."
+    },
+    {
+      "id": "electronic-document-without-frame", "clauses": ["5.6"], "pdf_pages": [4],
+      "modality": "permission_with_conditions", "check": "docx_properties_and_render",
+      "requirement": "В электронном документе с основной надписью допускается не выполнять рамку и дополнительные графы; вместо рамки задаются указанные поля.",
+      "parameters": {"left_mm": 20, "right_mm": 5, "top_mm": 5, "bottom_mm": 5},
+      "exceptions": "Это отдельный разрешённый вариант оформления. Не применять его автоматически к документу с сохранением существующей рамки; реквизиты дополнительных граф при необходимости выполняют по ГОСТ Р 2.058."
+    },
+    {
+      "id": "title-block-values", "clauses": ["5.7"], "pdf_pages": [5],
+      "modality": "requirement", "check": "manual_metadata_review",
+      "requirement": "Содержание и заполнение граф определяются таблицей 1; особенности электронных документов приведены в приложении Г.",
+      "exceptions": "Таблица 1 и приложение Г ещё не полностью переведены в машинные правила. Наименования, обозначения, подписи, версии и даты нельзя придумывать или изменять из-за форматирования."
+    },
+    {
+      "id": "date-format", "clauses": ["5.8"], "pdf_pages": [5],
+      "modality": "requirement_with_exceptions", "check": "metadata_and_manual_review",
+      "requirement": "Даты записываются арабскими цифрами через точки в порядке день, месяц, год; по общему правилу год четырёхзначный.",
+      "exceptions": "Для отдельных граф таблица 1 задаёт исключения. Не превращать двузначный год в нарушение без определения номера графы."
+    },
+    {
+      "id": "first-textual-sheet", "clauses": ["Б.2"], "pdf_pages": [15, 16],
+      "modality": "requirement_with_scope", "check": "template_geometry_and_render",
+      "requirement": "Для первого или заглавного листа текстового конструкторского документа используется форма 2.",
+      "parameters": {"form": "2", "main_block_width_mm": 185, "main_block_height_mm": 40},
+      "exceptions": "Размеры относятся к основному блоку формы 2 на рисунке страницы 16 и не включают дополнительные графы над ним. Это не высота всего колонтитула. Титульный лист по ГОСТ Р 2.105 рассматривается отдельно."
+    },
+    {
+      "id": "subsequent-textual-sheet", "clauses": ["Б.3"], "pdf_pages": [16, 17],
+      "modality": "requirement_with_scope", "check": "template_geometry_and_render",
+      "requirement": "Для последующих листов применяется форма 2а; графа 26 предназначена только для графических конструкторских документов.",
+      "parameters": {"form": "2а", "main_block_width_mm": 185, "main_block_height_mm": 15},
+      "exceptions": "Для двусторонней печати текстовых документов предусмотрена форма 2б по Б.4."
+    },
+    {
+      "id": "a4-orientation", "clauses": ["Б.5"], "pdf_pages": [19],
+      "modality": "requirement_with_exceptions", "check": "template_geometry_and_render",
+      "requirement": "На А4 основная надпись располагается вдоль короткой стороны; используется книжная ориентация.",
+      "exceptions": "Для спецификации допускается альбомная ориентация по ГОСТ Р 2.106; для форматов больше А4 ориентацию определяет разработчик."
+    },
+    {
+      "id": "optional-dashed-fields", "clauses": ["Б.6"], "pdf_pages": [19],
+      "modality": "permission_with_conditions", "check": "manual_scope_review",
+      "requirement": "Графы, показанные штриховыми линиями, вводят при необходимости. Не требовать все такие графы в каждом документе."
+    },
+    {
+      "id": "copy-and-format-fields", "clauses": ["Б.8"], "pdf_pages": [19],
+      "modality": "permission_with_conditions", "check": "template_geometry_and_render",
+      "requirement": "Графы 31 и 32 допускается размещать внутри рамки согласно варианту приложения Г; учитывать область фактической печати.",
+      "exceptions": "Не считать любое смещение этих граф нарушением без проверки выбранного варианта."
+    }
+  ],
+  "unresolved": [
+    "Применимость основной надписи, отдельных граф и дополнительных требований организации подтверждается для конкретного документа.",
+    "Таблица 1, приложение А, приложение Г и все варианты приложения Б оцифрованы не полностью.",
+    "Наличие рамки или штампа в исходнике не доказывает его соответствие: необходимы проверка геометрии, реквизитов и рендеринг.",
+    "Профиль содержит требования, но не выполняет преобразование документов."
+  ]
+}

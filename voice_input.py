@@ -146,6 +146,8 @@ class WakeWordListener:
             try:
                 chunk = record_until_stop_stopless(2.0)
                 text = transcribe(chunk, model_kind="wake")
+                if self._stop.is_set() or self.paused.is_set():
+                    continue
                 # Очищаем от пробелов, знаков препинания и приводим к нижнему регистру
                 clean_text = text.strip().lower().strip(".,!?;: ")
                 #print(f"[VOICE] Услышал: '{clean_text}'", flush=True)
