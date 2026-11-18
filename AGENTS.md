@@ -14,6 +14,8 @@
 
 - `text_review` adds read-only, source-pinned Р 2.105 literal-reference and native-structure observations to TU coverage only with the archived matching source. Exclude TOC, explicit hidden text, fields/revisions and drawings; unsupported/style-hidden/external references require review. A missing local target is not a violation. Table label tracking uses the same exact split ledger; numeric centering is limited to unambiguous unmerged columns and never alters precision/data. No automatic formula/footnote renumbering, technical rewriting or title/signature invention.
 
+- `stamp_review` measures only recognized non-rotated DrawingML frame groups in referenced active headers; resolve group/anchor scales, disclose partial child geometry, and never infer all form fields or alter artwork. `frame_preview` observes unambiguous closed vector A4 contours in the exact final PDF before approval; raster/unknown/ambiguous contours remain unmeasured. Fixed full-page forms must not be classified as 2/2а stamps. Report measured differences from the supplied form dimensions without inventing normative tolerances. Keep 5.8/table 1 paper-year exceptions for columns 13/18/20/23; date strings/labels do not prove actual signing or identify a field. Never stretch old artwork or create signatures/dates.
+
 ## Stack & Environment
 - **GUI Framework:** Flet (Python, async/await UI loops).
 - **ML / AI Engine:** PyTorch; local LLM inference through **Ollama**, using its OpenAI-compatible endpoint `http://127.0.0.1:11434/v1`.

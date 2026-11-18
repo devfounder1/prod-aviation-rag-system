@@ -1037,3 +1037,51 @@ application suite passes 448 tests, 12 optional skips, existing PyPDF2 warning.
 Strict types pass the four changed helpers. Private QA stays ignored under
 eval-results/gost-rules-2026-11-18/. Proceed to existing-frame/stamp measurements
 without replacing original artwork or inventing requisites.
+
+### 2026-11-18 — Existing Р 2.104 stamp and rendered-frame observations
+
+Add read-only stamp_review to TU coverage only with the matching archived
+Р 2.104 source. Resolve anchor/group scales for supported non-rotated DrawingML
+outlines in referenced active headers. Disclose unsupported child groups;
+never infer complete form/field conformity, signatures, dates or line-type
+compliance from partial measurements. Preserve every existing drawing position.
+Record table 1 paper date exceptions for fields 13/18/20/23; a two-digit year
+alone is not a failure. Unknown/VML/opaque/ambiguous/rotated geometry stays manual.
+
+Add frame_preview observations on the exact final PDF in prepare_document,
+after the existing continuation-caption guard and before approval/publication.
+Recognize only unambiguous closed axis-aligned vector A4 contours; disclose
+unmeasured pages and unknown forms. Do not identify the change-registration
+sheet as a normal 2/2а stamp from an arbitrary table line. Keep this host-side
+read-only PDF analysis distinct from the isolated converter and fixed-image
+fingerprint; no host converter, executable user code or new download is used.
+The image is explicitly refreshed offline for the updated source evidence.
+
+The private TU reveals actual legacy template scale differences: rendered
+page 2 outline width 183.427 mm, lower block 40.022 mm; pages 3–23 width
+181.275 mm, lower block 14.764 mm. The recognized DrawingML first-stamp group
+independently measures 183.439 mm / 40.06 mm with partial child geometry.
+Compare conditionally to forms 2/2а 185 mm / 40 or 15 mm, not to an invented
+normative tolerance. No artwork stretching/replacement is attempted: precise
+normalization still requires a separately reviewed template/explicit decision
+to replace legacy graphics, outside the current preserve-geometry profile.
+
+Fresh final TU export remains 24 pages. All PNGs equal the inspected export:
+six changed pages (4, 5, 7, 9, 10, 22), eighteen equal prior reviewed output.
+All 1027 paragraph texts/field instructions, numbering and ten media/OLE parts
+match. Header/footer geometry and relationships match; a fresh legacy import
+changes only one numeric OLE ObjectID in header2.xml. QA permits exactly that
+known import identity difference, not arbitrary header/text normalization;
+no runtime preservation guard is relaxed. Original DOC hash remains unchanged.
+Publish unique DOCX and detailed review in existing chat results with exact-byte
+FileReceipts/output_files, including all warnings and source-scoped coverage.
+Private artifacts remain ignored under eval-results/gost-rules-2026-11-18/.
+
+Validation: full suite 457 passed, 12 optional skipped; existing PyPDF2 warning.
+Focused frame/stamp/text/scope checks pass all 16 after the final conservative
+unknown-group adjustment. Four prepared-runtime tests pass: TOC/note typography,
+list wrapping, numeric-unit wrapping and complete export. Strict mypy passes
+50 hardened modules; read-only doctor ready/intact, deterministic recall@1 1.0.
+No native GUI/Word interaction or full GOST conformity is claimed. Update the
+source application order to distinguish implemented operations, observations,
+remaining engineering review and the unprepared exact-geometry template.

@@ -242,6 +242,8 @@ def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
                 raise RuntimeError('Обработчик документов устарел. Пересоберите butuz-documents:local по README; файл не сохранён.')
             from tu_validation import verify_preview
             captions = verify_preview(candidate.docx, candidate.preview_pdf)
+            from frame_preview import frame_warnings
+            candidate = replace(candidate, warnings=(*candidate.warnings,*frame_warnings(candidate.preview_pdf)))
             candidate = replace(candidate, changes=(*candidate.changes,
                 f'В итоговом PDF проверено наличие подписей продолжения на отдельных страницах: {captions}. '
                 'Это не заменяет визуальную проверку строк таблиц и рисунков.'))

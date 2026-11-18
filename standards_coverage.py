@@ -20,6 +20,7 @@ from tu_validation import DocumentCheck, TU_SOURCE_SHA256, validate_tu
 from tu_requirements import TUReview, FORMS, build_review
 from standard_scopes import load_scopes, scope_note
 from text_review import review_text, SOURCE as TEXT_SOURCE
+from stamp_review import review_stamps, SOURCE as STAMP_SOURCE
 
 ROOT = Path(__file__).resolve().parent
 
@@ -168,6 +169,9 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
         text_source=next((s for s in inventory if s.sha256==TEXT_SOURCE),None)
         if text_source and text_source.archived:
             document_checks=review_text(candidate)
+        stamp_source=next((s for s in inventory if s.sha256==STAMP_SOURCE),None)
+        if stamp_source and stamp_source.archived:
+            document_checks+=review_stamps(candidate,document_form)
         tu = next((s for s in inventory if s.source_id == 'gost-2-114-2016'),None)
         if tu and tu.archived:
             blockers.append('Полный источник ГОСТ 2.114-2016 «Технические условия» сохранён; '
