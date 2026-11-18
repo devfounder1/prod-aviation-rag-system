@@ -19,6 +19,7 @@ from standard_profiles import load_profile
 from tu_validation import DocumentCheck, TU_SOURCE_SHA256, validate_tu
 from tu_requirements import TUReview, FORMS, build_review
 from standard_scopes import load_scopes, scope_note
+from text_review import review_text, SOURCE as TEXT_SOURCE
 
 ROOT = Path(__file__).resolve().parent
 
@@ -164,13 +165,16 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
             tuple(p.number for p in corpus.pages if len(p.text.strip())<100) if corpus else (),
             source.sha256 in chosen,note))
     if document_kind == 'technical_specifications':
+        text_source=next((s for s in inventory if s.sha256==TEXT_SOURCE),None)
+        if text_source and text_source.archived:
+            document_checks=review_text(candidate)
         tu = next((s for s in inventory if s.source_id == 'gost-2-114-2016'),None)
         if tu and tu.archived:
             blockers.append('Полный источник ГОСТ 2.114-2016 «Технические условия» сохранён; '
                             'полная проверка состава и содержания ТУ по нему ещё не реализована. '
                             'Применимость этой редакции требует подтверждения.')
             if tu.sha256 == TU_SOURCE_SHA256:
-                document_checks=validate_tu(candidate)
+                document_checks+=validate_tu(candidate)
             else:
                 blockers.append('Редакция ГОСТ 2.114 отличается от поддерживаемой анализатором; измерения ТУ не выполнялись.')
         else:

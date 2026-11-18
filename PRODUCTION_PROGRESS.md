@@ -1010,3 +1010,30 @@ Remaining stages are explicit in docs/gost-application-order.md: finish the
 unimplemented conditions/structures of Р 2.105, then recognized Р 2.104 stamp
 forms/requisites and the genuinely applicable parts of the other sources.
 No claim that all twelve standards or the complete TU are automatically compliant.
+
+### 2026-11-18 — Р 2.105 table labels, numeric columns and remaining-rule review
+
+Review the supplied clauses for references, formulas, footnotes, terminology,
+quantities, title/approval sheets and conditional document structures. Add nine
+scoped evidence records (48 total); select two new deterministic operations
+(24 selections): track the existing literal table label through the exact
+TextSplit ledger; center only unambiguous unmerged numeric columns. Preserve
+text, precision, numbering, merges, opaque parts and unsupported layouts.
+
+Add source-pinned read-only text_review observations to TU coverage: literal
+internal references vs recognized caption/appendix targets; explicit hidden
+text/TOC/fields/revisions/drawings excluded. Unresolved may be external, never
+an automatic violation. Native formula/footnote counts do not establish absence
+in images. Remaining meaning, references/editions, title/approval/engineering
+content and conditional books/columnar/duplex rules stay specific manual items;
+these grouped records are not a complete clause-by-clause inventory.
+
+Rebuild the fixed local document image offline over the existing prepared base.
+Fresh export of the original private TU remains 24 pages: five table labels;
+references resolve to five tables, one figure and two appendices, with no
+recognized duplicates or missing literal local targets. Review changed pages
+4, 5, 7, 9, 10, 22; all other pages equal the previous inspected export. Full
+application suite passes 448 tests, 12 optional skips, existing PyPDF2 warning.
+Strict types pass the four changed helpers. Private QA stays ignored under
+eval-results/gost-rules-2026-11-18/. Proceed to existing-frame/stamp measurements
+without replacing original artwork or inventing requisites.

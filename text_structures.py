@@ -37,6 +37,7 @@ class StructureReport:
     appendix_headings: int
     splits: tuple[TextSplit,...]
     warnings: tuple[str,...]
+    table_labels: int = 0
 
 
 def expected_texts(before: list[tuple[str,str]],splits: tuple[TextSplit,...]) -> list[tuple[str,str]]:
@@ -51,7 +52,7 @@ def expected_texts(before: list[tuple[str,str]],splits: tuple[TextSplit,...]) ->
             result.append((tag,value));continue
         if (tag!=W+'t' or split.original!=value or not split.first or not split.second
                 or split.first+split.second!=value):
-            raise ValueError('Изменён текст при оформлении метки примечания')
+            raise ValueError('Изменён текст при оформлении метки')
         result.extend(((tag,split.first),(tag,split.second)))
     return result
 
@@ -195,7 +196,7 @@ def normalize_structures(document: Any,styles: Any,numbering: Any,roles: dict[st
         return StructureReport(0,0,0,0,(),())
     indices={n:i for i,n in enumerate(n for n in document.iter() if n.tag in TEXT_TAGS)}
     warnings: list[str]=[];splits: list[TextSplit]=[]
-    notes=examples=appendices=0
+    notes=examples=appendices=table_labels=0
     in_text=False;note_counter: str | None=None;example_counter=False
     blocks=list(body)
     for index,paragraph in enumerate(blocks):
@@ -210,6 +211,13 @@ def normalize_structures(document: Any,styles: Any,numbering: Any,roles: dict[st
             note_counter=None;continue
         if not _plain(paragraph):
             note_counter=None;continue
+        # Only an actual adjacent table caption, never a prose reference.
+        if (re.fullmatch(r'Таблица\s+[А-ЯA-Z]?\.?\d+(?:\.\d+)*(?:\s*[—–-]\s*.+)?',text)
+                and index+1<len(blocks) and blocks[index+1].tag==W+'tbl'):
+            if _label_tracking(paragraph,'Таблица',indices,splits,20):
+                table_labels+=1
+            else:
+                warnings.append('Разрядка метки таблицы требует проверки: '+text[:80])
         # A strict three-line existing appendix heading, not a text mention.
         events=paragraph.xpath('./w:r/w:t | ./w:r/w:br | ./w:r/w:cr',namespaces=NS)
         lines=['']
@@ -259,4 +267,4 @@ def normalize_structures(document: Any,styles: Any,numbering: Any,roles: dict[st
         else:
             note_counter=None
     toc=_toc(document,body,styles,roles,profile,warnings)
-    return StructureReport(notes,examples,toc,appendices,tuple(splits),tuple(dict.fromkeys(warnings)))
+    return StructureReport(notes,examples,toc,appendices,tuple(splits),tuple(dict.fromkeys(warnings)),table_labels)

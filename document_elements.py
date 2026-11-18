@@ -253,6 +253,29 @@ def _grid(table: Any, width: int) -> list[int] | None:
     return widths
 
 
+def _numeric_columns(rows: list[Any], headers: int) -> set[int]:
+    """Choose only complete unmerged body columns of simple numeric entries.
+
+    Do not infer precision, units or missing values. Mixed prose/opaque content
+    and merged body rows exclude a column from this optional alignment choice.
+    """
+    body=rows[headers:]
+    if not body:return set()
+    if any(r.xpath('./w:trPr/w:gridBefore | ./w:trPr/w:gridAfter',namespaces=NS) for r in body):return set()
+    cells=[r.findall(W+'tc') for r in body]
+    count=len(cells[0])
+    if any(len(row)!=count for row in cells):return set()
+    result: set[int]=set()
+    for col in range(count):
+        values=[row[col] for row in cells]
+        if any(v.xpath('./w:tcPr/w:gridSpan | ./w:tcPr/w:vMerge | ./w:tcPr/w:hMerge | .//w:fldChar | .//w:fldSimple | .//w:object | .//w:hyperlink',namespaces=NS) for v in values):continue
+        texts=[_text(v) for v in values]
+        if any(re.fullmatch(r'[+−-]?\d+(?:[.,]\d+)*(?:\s*%)?',t) for t in texts) and all(
+                not t or t in {'-','—','–'} or re.fullmatch(r'[+−-]?\d+(?:[.,]\d+)*(?:\s*%)?',t) for t in texts):
+            result.add(col)
+    return result
+
+
 def _table(table: Any, caption: Any, width: int, height: int, size: int, header_size: int) -> str | None:
     if table.xpath('.//w:tbl | .//w:drawing | .//w:pict | .//w:object | ./w:tblPr/w:tblpPr', namespaces=NS):
         return 'Сложная или плавающая таблица сохранена без изменения геометрии.'
@@ -264,6 +287,7 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
     if widths is None:
         return 'Неоднозначная сетка таблицы: оформление оставлено для ручной проверки.'
     headers = _header_rows(rows)
+    numeric_columns = _numeric_columns(rows, headers)
     tpr = _node(table, 'tblPr')
     _set(tpr, 'tblW', w=str(sum(widths)), type='dxa')
     _set(tpr, 'tblInd', w='0', type='dxa')
@@ -287,6 +311,7 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
         for cell in row.findall(W + 'tc'):
             cpr = _node(cell, 'tcPr')
             span = _integer(cpr.find(W + 'gridSpan'), 'val', 1)
+            numeric = column in numeric_columns
             cell_width = sum(widths[column:column + span]); column += span
             _set(cpr, 'tcW', w=str(cell_width), type='dxa')
             _set(cpr, 'noWrap', val='0')
@@ -299,7 +324,7 @@ def _table(table: Any, caption: Any, width: int, height: int, size: int, header_
             paragraphs = cell.findall(W + 'p')
             for p_index, paragraph in enumerate(paragraphs):
                 _paragraph(paragraph, font_size, keep=index < headers or p_index < len(paragraphs) - 1,
-                           center=index < headers)
+                           center=index < headers or numeric)
                 chars_per_line = max(1, (cell_width - 140) / (font_size * 10))
                 lines += sum(max(1, math.ceil(len(line) / chars_per_line))
                              for line in re.split(r'[\r\n]', _text(paragraph)))

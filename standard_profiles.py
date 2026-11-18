@@ -22,6 +22,7 @@ SUPPORTED_SELECTION: dict[str, frozenset[str]] = {
         'table-caption-position', 'table-header-continuation', 'table-numbering',
         'figure-caption-position', 'figure-numbering', 'list-layout', 'list-punctuation', 'unit-nonbreaking',
         'toc-layout', 'appendix-heading', 'note-style', 'example-style',
+        'table-label-tracking', 'table-values-alignment',
     }),
     'gost_r_2_104_2023.json': frozenset({
         'textual-forms', 'additional-organization-fields',
