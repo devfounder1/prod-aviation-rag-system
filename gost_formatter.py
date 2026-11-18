@@ -21,6 +21,7 @@ from standard_profiles import load_profile
 from metafile_layout import repair_figure_fonts
 from list_layout import normalize_lists
 from unit_spacing import bind_units
+from text_structures import normalize_structures, expected_texts, format_font
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 NS = {'w': W[1:-1]}
@@ -92,7 +93,7 @@ def format_docx(source: Path, target: Path) -> FormatReport:
             ppr = paragraph.find(W + 'pPr')
             style = ppr.find(W + 'pStyle') if ppr is not None else None
             role = roles.get(style.get(W + 'val', ''), '') if style is not None else 'normal'
-            if role in {'heading1', 'заголовок1'}:
+            if role in {'heading1', 'заголовок1'} or plain.startswith('Настоящие технические условия'):
                 in_main = True
             if not in_main:
                 continue
@@ -123,6 +124,7 @@ def format_docx(source: Path, target: Path) -> FormatReport:
                         _prop(rpr, 'szCs', val=size)
             elif role in {'normal', 'bodytext', 'heading3', 'heading4', 'заголовок3', 'заголовок4'}:
                 body_count += 1
+                format_font(paragraph, profile.body_pt)
                 _element(ppr, 'spacing').attrib.clear()
                 _prop(ppr, 'spacing', before='0', after='0',
                       line=str(round(profile.body_line * 240)), lineRule='auto')
@@ -169,8 +171,9 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         numbering = (ET.fromstring(package.read('word/numbering.xml'), parser)
                      if 'word/numbering.xml' in package.namelist() else None)
         lists = normalize_lists(document, styles, numbering, profile.indent_mm)
+        structures = normalize_structures(document, styles, numbering, roles, profile)
         font_updates, repaired_fonts, font_warnings = repair_figure_fonts(document, package)
-        if _texts(document) != before:
+        if _texts(document) != expected_texts(before, structures.splits):
             raise ValueError('Нарушена сохранность текста; результат не публикуется')
         # All preceding layout transformations must still preserve exact text.
         # This final, ledger-checked step may only change existing spaces to NBSP.
@@ -219,13 +222,14 @@ def format_docx(source: Path, target: Path) -> FormatReport:
     warnings.extend(elements.warnings)
     warnings.extend(lists.warnings)
     warnings.extend(units.warnings)
+    warnings.extend(structures.warnings)
     warnings.extend(font_warnings)
     if repaired_fonts:
         warnings.append('В копии для показа схем шрифт GOST заменён на локальный Liberation Sans. '
                         'Исходные изображения и встроенные объекты сохранены отдельно без изменения; проверьте подписи.')
     return FormatReport(profile.title, (
         f'Оформлены заголовки разделов и подразделов: {headings}.',
-        f'Межстрочный интервал {profile.body_line:g} применён к основному тексту: {body_count} абзацев.',
+        f'Основной текст: шрифт {profile.body_pt} пт и межстрочный интервал {profile.body_line:g}; {body_count} абзацев. Гарнитуры, выделения, формулы и надстрочные символы сохранены.',
         'Убраны старые интервалы до/после обычных абзацев и привязка строк к сетке. Следующие разделы идут в потоке; приложения — с новой страницы.',
         f'Зарезервировано место между основным текстом и рамкой/штампом в распознанных разделах: {framed_sections}.',
         f'Для обычных абзацев применён отступ {profile.indent_mm:g} мм; нумерация и специальные блоки сохранены.',
@@ -233,6 +237,8 @@ def format_docx(source: Path, target: Path) -> FormatReport:
         f'Убраны доказанные устаревшие ручные переносы: {lists.soft_breaks}. Текст и номера сохранены; знаки проверены без переписывания.',
         f'Неразрывным пробелом связаны числовые значения с единицами: {units.quantities}; заменено пробелов: {units.spaces}. '
         'Изменены только пробельные символы, значения и обозначения сохранены.',
+        f'Оформлены примечания: {structures.notes}; примеры: {structures.examples}; строки существующего содержания: {structures.toc_entries}; заголовки приложений: {structures.appendix_headings}. '
+        'Текст, обозначения и ссылки сохранены; состав документа не придумывался.',
         f'Оформлены таблицы с подписями: {elements.tables}. Сохранены значения и объединения ячеек; настроены шапки и переносы.',
         f'Размещены существующие рисунки: {elements.figures}. Масштаб пропорциональный; подписи и пояснения связаны с изображением.',
         f'Подготовлены копии старых схем с исправленным отображением шрифта: {repaired_fonts}. Исходники сохранены.',

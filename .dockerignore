@@ -4,6 +4,7 @@
 !document_layout.py
 !document_elements.py
 !list_layout.py
+!text_structures.py
 !unit_spacing.py
 !table_pagination.py
 !metafile_layout.py

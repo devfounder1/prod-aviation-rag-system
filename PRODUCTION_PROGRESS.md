@@ -957,3 +957,56 @@ sources, typed JSON, GUI callbacks, stale dialogs, and rejection without
 publication. Actual CLI JSON exports all 148 items for the private candidate.
 Strict mypy passes all 45 hardened modules and desktop syntax compilation passes.
 Read-only doctor is ready/intact; deterministic retrieval recall@1 is 1.0.
+
+### 2026-11-18 — Selected Р 2.105 text structures and twelve-source TU order
+
+Review scope pages for every supplied edition and record a source/hash-pinned
+TU application order in standard_scopes / tu_source_scopes.json. Expose the
+current stage and next action in TU coverage. Distinguish textual formatting,
+document composition, diagram kinds, electrical designations, assembly/harness
+drawings and operating-document rules. This is scope review, not a complete
+clause inventory or automatic applicability service; only the two-source recipe
+enables transformations. Changed editions stay explicitly unreviewed. Preserve
+the separate 148-item ГОСТ 2.114 checklist and pending engineering decisions.
+
+Add four evidence entries and select them plus the existing body-font entry:
+39 registry records, 22 recipe selections. text_structures handles existing,
+unambiguous TOC1/2 entries/bookmarks with dotted leaders and hanging wrapped
+titles; recognized three-line appendix headings; smaller note typography and
+tracked labels; explicit smaller bold-italic examples. Set recognized main
+prose/introduction to 14 pt, notes/examples to 12 pt, retaining main 1.5 line
+spacing, font families, inline emphasis and superscripts. Do not reinterpret
+ordinary mentions, invent missing sections, rewrite punctuation, alter counters
+or process opaque fields/objects as prose. Preserve measured figure-note groups.
+For label tracking, an exact source-index TextSplit ledger permits only one
+literal node's nonempty unchanged partition; the general text guard remains
+strict, followed by the separate existing NBSP ledger. Ambiguity stays visible.
+
+Add the helper and evidence to Docker COPY/allowlist and runtime fingerprint.
+Explicitly update the already prepared local document image offline over its
+existing immutable base; no downloads, host converters or models are involved.
+Prepare a fresh copy of the private TU from its original DOC: 24 pages,
+20 TOC entries, 12 note paragraphs, two appendix headings, zero examples.
+Inspect all twelve changed pages individually (2, 3, 4, 6, 15–21, 23);
+the other twelve PNGs equal the previously reviewed export. Four continuation
+captions pass the final PDF guard. All 1027 paragraph texts/field instructions,
+the numbering part and ten opaque media/OLE parts match the prior result;
+original DOC hash is unchanged. Keep the inherited Liberation Sans display-copy
+disclosure and original image parts. Leave note/list punctuation and engineering
+content for explicit review. Publish unique DOCX and detailed review files in
+the existing chat results with verified readback/FileReceipts/output_files;
+originals and previous results remain untouched. Private QA is ignored under
+eval-results/gost-text-2026-11-18/. Native GUI/Word interaction is not claimed.
+
+Validation: 444 application tests pass, 12 optional tests skipped; existing
+PyPDF2 deprecation warning remains. Four prepared-runtime tests pass for TOC
+wrapping/note font sizes, list continuation geometry, numeric-unit binding and
+complete document export; two local HTTP cancellation tests also pass. The
+initial restricted run could not bind its loopback fixture; the complete rerun
+with local access passes. Strict mypy passes 47 hardened modules. Read-only
+doctor is ready/intact; deterministic retrieval recall@1 is 1.0.
+
+Remaining stages are explicit in docs/gost-application-order.md: finish the
+unimplemented conditions/structures of Р 2.105, then recognized Р 2.104 stamp
+forms/requisites and the genuinely applicable parts of the other sources.
+No claim that all twelve standards or the complete TU are automatically compliant.

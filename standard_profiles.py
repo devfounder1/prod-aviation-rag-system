@@ -17,10 +17,11 @@ from typing import Any
 # than run actions whose supporting clauses have been removed from the recipe.
 SUPPORTED_SELECTION: dict[str, frozenset[str]] = {
     'gost_r_2_105_2019.json': frozenset({
-        'heading-format', 'heading-clearance', 'section-page-break',
+        'heading-format', 'heading-clearance', 'section-page-break', 'body-font-size',
         'body-line-spacing', 'paragraph-indent', 'secondary-font-size', 'frame-clearance',
         'table-caption-position', 'table-header-continuation', 'table-numbering',
         'figure-caption-position', 'figure-numbering', 'list-layout', 'list-punctuation', 'unit-nonbreaking',
+        'toc-layout', 'appendix-heading', 'note-style', 'example-style',
     }),
     'gost_r_2_104_2023.json': frozenset({
         'textual-forms', 'additional-organization-fields',
@@ -44,6 +45,12 @@ class FormattingProfile:
     frame_bottom_mm: int
     first_frame_bottom_mm: int
     selected_files: tuple[str, ...]
+    body_pt: int
+    note_pt: int
+    note_label_spacing_pt: int
+    toc_font_pt: int
+    toc_indent_mm: float
+    toc_page_reserve_mm: int
 
 
 def _unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -116,7 +123,9 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
               'heading_gap_pt': (20, 48), 'body_line': (1, 2),
               'indent_mm': (12.5, 17), 'table_pt': (10, 14), 'table_header_pt': (10, 14),
               'frame_top_mm': (16, 30), 'frame_bottom_mm': (35, 50),
-              'first_frame_bottom_mm': (57, 70)}
+              'first_frame_bottom_mm': (57, 70), 'body_pt': (11, 14), 'note_pt': (10, 13),
+              'note_label_spacing_pt': (1, 2), 'toc_font_pt': (11, 14),
+              'toc_indent_mm': (3, 8), 'toc_page_reserve_mm': (6, 15)}
     if (not isinstance(settings, dict) or set(settings) != set(bounds) | {'section_new_page'}
             or type(settings.get('section_new_page')) is not bool):
         raise ValueError('Неполные или неизвестные параметры оформления')
@@ -124,8 +133,10 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
         value = settings[key]
         if type(value) not in {int, float} or not minimum <= value <= maximum:
             raise ValueError('Параметр оформления вне допустимого диапазона: ' + key)
-        if key not in {'body_line', 'indent_mm'} and int(value) != value:
+        if key not in {'body_line', 'indent_mm', 'toc_indent_mm'} and int(value) != value:
             raise ValueError('Размер шрифта и интервал заголовка должны быть целыми')
+    if not 1 <= settings['body_pt']-settings['note_pt'] <= 2:
+        raise ValueError('Примечания должны быть на 1–2 пт меньше выбранного основного шрифта')
     if settings['subheading_pt'] >= settings['heading_pt']:
         raise ValueError('Подзаголовок должен быть меньше заголовка раздела')
     title = recipe.get('title')
@@ -136,11 +147,14 @@ def load_profile(root: Path | None = None) -> FormattingProfile:
                              float(settings['body_line']), float(settings['indent_mm']),
                              int(settings['table_pt']), int(settings['table_header_pt']),
                              settings['section_new_page'], int(settings['frame_top_mm']),
-                             int(settings['frame_bottom_mm']), int(settings['first_frame_bottom_mm']), tuple(selected))
+                             int(settings['frame_bottom_mm']), int(settings['first_frame_bottom_mm']), tuple(selected),
+                             int(settings['body_pt']), int(settings['note_pt']), int(settings['note_label_spacing_pt']),
+                             int(settings['toc_font_pt']), float(settings['toc_indent_mm']),
+                             int(settings['toc_page_reserve_mm']))
 
 
 def runtime_files() -> tuple[str, ...]:
     """Code and selected evidence covered by the host/image freshness check."""
     return ('document_inspection.py', 'gost_formatter.py', 'document_layout.py',
-            'document_elements.py', 'list_layout.py', 'unit_spacing.py', 'table_pagination.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
+            'document_elements.py', 'list_layout.py', 'text_structures.py', 'unit_spacing.py', 'table_pagination.py', 'metafile_layout.py', 'standard_profiles.py', 'worker.py',
             *(f'standards/{name}' for name in load_profile().selected_files))

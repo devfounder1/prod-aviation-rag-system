@@ -114,9 +114,9 @@ def test_incomplete_archive_is_corruption_not_an_absent_source(edition: tuple[So
 
 def test_coverage_does_not_equate_recipe_or_missing_sources_with_compliance(tmp_path: Path) -> None:
     report=build_report(b'exact candidate bytes','technical_specifications',tmp_path/'empty')
-    assert len(report.sources)==len(library.sources()) and len(report.requirements)==35
+    assert len(report.sources)==len(library.sources()) and len(report.requirements)==39
     assert all(not s.archived for s in report.sources)
-    assert sum(r.in_formatting_recipe for r in report.requirements)==17
+    assert sum(r.in_formatting_recipe for r in report.requirements)==22
     assert not report.full_conformance_checked and not report.semantic_catalog_complete
     assert {r.status for r in report.requirements}=={'нужна проверка человеком','проверка не реализована'}
     assert any('2.114' in message for message in report.blockers)

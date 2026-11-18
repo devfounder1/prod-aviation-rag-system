@@ -18,6 +18,7 @@ import standards_library as library
 from standard_profiles import load_profile
 from tu_validation import DocumentCheck, TU_SOURCE_SHA256, validate_tu
 from tu_requirements import TUReview, FORMS, build_review
+from standard_scopes import load_scopes, scope_note
 
 ROOT = Path(__file__).resolve().parent
 
@@ -126,6 +127,7 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
     recipe = json.loads((standards_root/'profiles/eskd_text.json').read_text())
     chosen = {s['sha256']: frozenset(s['rule_ids']) for s in recipe['sources']}
     records = library.sources(standards_root/'library.json')
+    scope_plan = load_scopes(standards_root) if document_kind=='technical_specifications' else None
     inventory: list[SourceCoverage] = []
     document_checks: tuple[DocumentCheck, ...] = ()
     tu_corpus: library.Corpus | None = None
@@ -150,6 +152,8 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
                               for u in corpus.units)
         note = ('Выбран прежним рецептом; полная применимость требует проверки.' if source.sha256 in chosen else
                 'Не включён в автоматическое оформление; требуется разбор применимости и реализация.')
+        if scope_plan is not None:
+            note += ' '+scope_note(source,scope_plan)
         if source.source_id=='gost-2-114-2016' and source.sha256==TU_SOURCE_SHA256:
             note += ' Есть отдельный предметный перечень ГОСТ 2.114; он не изменяет рецепт и не подтверждает выполнение требований.'
         if source.source_id == 'gost-2-601-2013':

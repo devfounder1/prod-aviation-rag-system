@@ -129,7 +129,9 @@ def test_captioned_picture_fits_with_notes_without_changing_picture_or_text(tmp_
     source, target = tmp_path/'source.docx', tmp_path/'result.docx'
     doc.save(source); report = format_docx(source, target)
     result = Document(target)
-    assert result._element.xpath('.//w:t/text()') == before
+    expected = [part for text in before for part in (['Примечание', ' — Уже существующее пояснение.']
+                if text == 'Примечание — Уже существующее пояснение.' else [text])]
+    assert result._element.xpath('.//w:t/text()') == expected
     assert not result._element.xpath('.//wp:anchor')
     picture = result._element.xpath('.//wp:inline')[0]
     width, height = (int(picture.find(WP+'extent').get(key)) for key in ('cx','cy'))
