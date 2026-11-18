@@ -1,0 +1,2880 @@
+{
+  "schema_version": 1,
+  "review_id": "gost-2-114-2016-supplied-edition-v1",
+  "reviewed_on": "2026-11-18",
+  "source_id": "gost-2-114-2016",
+  "source_sha256": "556c15185dd0c00e2310d9b96113b252c27788d1e29215005b49e533a18f45a5",
+  "text_sha256": "4b480efcb8717fb283ae236eda1ba73a88e35fb062be67a9cd7209429765b9f7",
+  "pdf_pages": 15,
+  "scope": "Предметный перечень для предоставленной редакции: нормативный текст разделов 1–6, включая условия, варианты и примечания. Проверка актуальности/правовой применимости редакций и выполнение конкретным ТУ не подтверждены.",
+  "page_disposition": [
+    {
+      "pages": [
+        1,
+        2,
+        3
+      ],
+      "role": "Титул, предисловие и содержание: метаданные редакции, не требования к изделию."
+    },
+    {
+      "pages": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "role": "Прочитанный текст разделов 1–6; ссылки и определения учтены отдельно."
+    },
+    {
+      "pages": [
+        15
+      ],
+      "role": "Выходные сведения издания; не требования к ТУ."
+    }
+  ],
+  "context_review": [
+    {
+      "clauses": [
+        "1"
+      ],
+      "pages": [
+        4
+      ],
+      "note": "Подтвердить применимость к машиностроительному/приборостроительному изделию и учесть стандарты на конкретный вид техники."
+    },
+    {
+      "clauses": [
+        "2"
+      ],
+      "pages": [
+        4,
+        5
+      ],
+      "note": "Все нормативные ссылки и примечание о заменяющих/отменённых редакциях требуют проверки. Наличие новой редакции в библиотеке не доказывает её автоматическую подстановку."
+    },
+    {
+      "clauses": [
+        "3.1.1",
+        "3.1.2",
+        "3.1.3",
+        "3.2"
+      ],
+      "pages": [
+        5
+      ],
+      "note": "Определения изделия/СЧ и сокращения используются для определения условий; не создают автоматического решения о типе изделия или категории заказа."
+    }
+  ],
+  "referenced_editions": [
+    "ГОСТ 2.051—2013",
+    "ГОСТ 2.058—2016",
+    "ГОСТ 2.102—2013",
+    "ГОСТ 2.103—2013",
+    "ГОСТ 2.104—2006",
+    "ГОСТ 2.105—95",
+    "ГОСТ 2.106—96",
+    "ГОСТ 2.113—75",
+    "ГОСТ 2.201—80",
+    "ГОСТ 2.301—68",
+    "ГОСТ 2.501—2013",
+    "ГОСТ 2.503—2013",
+    "ГОСТ 2.511—2011",
+    "ГОСТ 2.512—2011",
+    "ГОСТ 15.000—82",
+    "ОК 012—93",
+    "ГОСТ Р 15.000—2016 (сноска для РФ)",
+    "ГОСТ 2.101—2016",
+    "ГОСТ 15.001"
+  ],
+  "clauses": [
+    {
+      "clause": "4.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 5,
+          "start": 2990,
+          "end": 3268
+        },
+        {
+          "page": 6,
+          "start": 0,
+          "end": 325
+        }
+      ],
+      "span_sha256": "46ec175368964c5e25a05f579506c1c9f298bca10913f66ab06606be659a06a2"
+    },
+    {
+      "clause": "4.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 325,
+          "end": 931
+        }
+      ],
+      "span_sha256": "becc5a402e268e05d9f37ed41cf4585b279a016f499e6ed2361ee557244e088e"
+    },
+    {
+      "clause": "4.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 931,
+          "end": 1440
+        }
+      ],
+      "span_sha256": "1c0f688711c749187f369fe0965cbb91ba75c5bca66c6f8f383b07527b79d331"
+    },
+    {
+      "clause": "4.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 1440,
+          "end": 1831
+        }
+      ],
+      "span_sha256": "0467c73c737b98ef3d0daf9e5f38f7dc4ac43fb6cad087908b895f3a95c3e5be"
+    },
+    {
+      "clause": "4.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 1831,
+          "end": 2379
+        }
+      ],
+      "span_sha256": "6b15683cc1e4eb92d3aab52fee7edb5d30fe2ca4191be52d6e0fa337f0ef6b64"
+    },
+    {
+      "clause": "4.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 2379,
+          "end": 3126
+        }
+      ],
+      "span_sha256": "982691be3892c165ace7abee0c0088a7628a2881639994ba528019cb2f2612bd"
+    },
+    {
+      "clause": "4.7",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 3126,
+          "end": 3244
+        }
+      ],
+      "span_sha256": "4645a566a5928d1bb1458ff91b2fb7768ed7fae5af7fa2c82921c76790a6fae6"
+    },
+    {
+      "clause": "4.8",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 6,
+          "start": 3244,
+          "end": 4466
+        },
+        {
+          "page": 7,
+          "start": 0,
+          "end": 246
+        }
+      ],
+      "span_sha256": "8023cbdcdcb9128ab423e9cde247394d76da208fd068ad49ea915e9a381320f8"
+    },
+    {
+      "clause": "4.9",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 246,
+          "end": 848
+        }
+      ],
+      "span_sha256": "4635cebe8bc0798bc389e413a4144d4ac914679ae701c789c8a6f82068c28953"
+    },
+    {
+      "clause": "4.10",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 848,
+          "end": 969
+        }
+      ],
+      "span_sha256": "c296040363107430fe1c660dc7d44a2fc905077d8f43ad635e4107e0aeb522e3"
+    },
+    {
+      "clause": "4.11",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 969,
+          "end": 1156
+        }
+      ],
+      "span_sha256": "fb1e3e23bf6477f03f681e37114ecdc22674916f0ed3e93998476286fd978782"
+    },
+    {
+      "clause": "4.12",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 1156,
+          "end": 1762
+        }
+      ],
+      "span_sha256": "8be73eef9a9cb1347faa7b55858385d7f8a7699b7044ba35689788aa45436260"
+    },
+    {
+      "clause": "5.1",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 7,
+          "start": 1762,
+          "end": 1794
+        }
+      ],
+      "span_sha256": "37b45efe1b6e67aad7a748f62fdc187f4cadae72bc5eb6051b7217824919ce6b"
+    },
+    {
+      "clause": "5.1.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 1794,
+          "end": 2366
+        }
+      ],
+      "span_sha256": "6b89225f035ee3e9f85d403fe9a477df73e4d13743633d79c3b823a173a86369"
+    },
+    {
+      "clause": "5.1.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 2366,
+          "end": 2965
+        }
+      ],
+      "span_sha256": "a4c2093112a3b337638777ad5e2a70f42d10143f75358b45f8136b88f94b25d7"
+    },
+    {
+      "clause": "5.2",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 7,
+          "start": 2965,
+          "end": 2991
+        }
+      ],
+      "span_sha256": "ebacc9fd3f428ef32baf20e090ee8d3a194a92c2fc393fbb5f665f48c69e1b09"
+    },
+    {
+      "clause": "5.2.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 2991,
+          "end": 3160
+        }
+      ],
+      "span_sha256": "8f535fc4c3641ea8d0dcba6e3998c10f8503b051a1c664fb15034ab0b62c8721"
+    },
+    {
+      "clause": "5.2.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 3160,
+          "end": 3313
+        }
+      ],
+      "span_sha256": "492014a71a01352f6aff1b266de246503cd955798bd13e3eebba00ba10fb0f11"
+    },
+    {
+      "clause": "5.2.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 7,
+          "start": 3313,
+          "end": 3725
+        },
+        {
+          "page": 8,
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "span_sha256": "48b124418f829a331946c5bced7d6936b6b5864c30bfba99297f388503c7e1c8"
+    },
+    {
+      "clause": "5.2.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 8,
+          "start": 119,
+          "end": 237
+        }
+      ],
+      "span_sha256": "2d93a98e434d0869bb016beb1676b4de34272d5a38ecb35cf904f580f1c1d9cc"
+    },
+    {
+      "clause": "5.2.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 8,
+          "start": 237,
+          "end": 397
+        }
+      ],
+      "span_sha256": "6759cbda1873f55a5ac1d45a529215754356de22ce1a1d52743b9f772b523d64"
+    },
+    {
+      "clause": "5.3",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 8,
+          "start": 397,
+          "end": 433
+        }
+      ],
+      "span_sha256": "e9f833c84deed5a278fdde0ca89768daa263277eaf03525ec0faafdd0fd86f97"
+    },
+    {
+      "clause": "5.3.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 8,
+          "start": 433,
+          "end": 949
+        }
+      ],
+      "span_sha256": "709bf7005717c2e6178db107346dff5c6a62d3fb0a13d4f890b14ad65384b0e8"
+    },
+    {
+      "clause": "5.3.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 8,
+          "start": 949,
+          "end": 1616
+        }
+      ],
+      "span_sha256": "c9132eb3d574625cff43544b3842189f724e7382e81f773c4b299e1ef0b8823f"
+    },
+    {
+      "clause": "5.3.2.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 8,
+          "start": 1616,
+          "end": 4611
+        },
+        {
+          "page": 9,
+          "start": 0,
+          "end": 1935
+        }
+      ],
+      "span_sha256": "68dfb90950b9b7994ce2ebcb2e91d8d6a5bed42916294ad5225fa2eaec51d4ef"
+    },
+    {
+      "clause": "5.3.2.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 1935,
+          "end": 2090
+        }
+      ],
+      "span_sha256": "11f23c09fd69123cf619fecb0aac83895222ad963e36d3c26780b16cef1bc1ac"
+    },
+    {
+      "clause": "5.3.2.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 2090,
+          "end": 2636
+        }
+      ],
+      "span_sha256": "48414cea270774936a496e3a8d515fed00cc6fc2df695d1c03d69b558be2cb96"
+    },
+    {
+      "clause": "5.3.2.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 2636,
+          "end": 3031
+        }
+      ],
+      "span_sha256": "d5e3f976aed911f77f7e4fd3ca2456f9c8455c7580d250196daedfb08d64f9e6"
+    },
+    {
+      "clause": "5.3.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 3031,
+          "end": 3363
+        }
+      ],
+      "span_sha256": "afc7b20aafac05aa72f86ec17b896adf56290e44d85269159e067d6c98ec9392"
+    },
+    {
+      "clause": "5.3.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 3363,
+          "end": 3818
+        }
+      ],
+      "span_sha256": "82e9ca6ba577c894d5cb9d39a4ec2507dee78f1f35a7e36336cede100266d12d"
+    },
+    {
+      "clause": "5.3.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 3818,
+          "end": 4168
+        }
+      ],
+      "span_sha256": "265d5a7a5b8e5f6f8f41611ba855f12af976f8ae29aca11c1f61fe5948183c2a"
+    },
+    {
+      "clause": "5.3.5.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 4168,
+          "end": 4549
+        }
+      ],
+      "span_sha256": "ea30cbdd49a85143c2fb79f6ccb0f63a9558c1d24042b8a5305e17655387d8f3"
+    },
+    {
+      "clause": "5.3.5.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 9,
+          "start": 4549,
+          "end": 4768
+        },
+        {
+          "page": 10,
+          "start": 0,
+          "end": 405
+        }
+      ],
+      "span_sha256": "45481e0c92a714b8a950b467ed7a32ef0681f5f0326f1d28b53a32b6a7da9826"
+    },
+    {
+      "clause": "5.3.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 10,
+          "start": 405,
+          "end": 1142
+        }
+      ],
+      "span_sha256": "8ba7174518d5833d9cdcbbcb639e56f9c4badc50323a441799c1f1cc8008dbe3"
+    },
+    {
+      "clause": "5.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 10,
+          "start": 1142,
+          "end": 3213
+        }
+      ],
+      "span_sha256": "c8f6544eea2996e3c8d860548a116bad49701066ccc254eaac51b9d2ecaf4da9"
+    },
+    {
+      "clause": "5.5",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 10,
+          "start": 3213,
+          "end": 3259
+        }
+      ],
+      "span_sha256": "b00dbe54d58b54dd92c635b2511684638faa2531b3a53285a023b5a28c24b5f8"
+    },
+    {
+      "clause": "5.5.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 10,
+          "start": 3259,
+          "end": 3499
+        }
+      ],
+      "span_sha256": "6f08380c6abacac5172daffa27df5542cf6f376a6a3a6c5576290e982144c42e"
+    },
+    {
+      "clause": "5.5.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 10,
+          "start": 3499,
+          "end": 4142
+        },
+        {
+          "page": 11,
+          "start": 0,
+          "end": 17
+        }
+      ],
+      "span_sha256": "957790b1c32b83675fea911561f6193ccc32241c3613b0584c5dc7230b547398"
+    },
+    {
+      "clause": "5.6",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 11,
+          "start": 17,
+          "end": 45
+        }
+      ],
+      "span_sha256": "9a87c870d401c923b88b225a03718ddadfed694df83cc3a1f390acdd0e5746d3"
+    },
+    {
+      "clause": "5.6.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 45,
+          "end": 451
+        }
+      ],
+      "span_sha256": "15cd7261514b16d3907be07d371c2761dee4230b6243a91e18a569d015a43f48"
+    },
+    {
+      "clause": "5.6.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 451,
+          "end": 837
+        }
+      ],
+      "span_sha256": "98cfc180b4ff21cb895c3d9b4d2278283984b3930f1559dcce5514a55eec8c88"
+    },
+    {
+      "clause": "5.6.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 837,
+          "end": 1209
+        }
+      ],
+      "span_sha256": "95a2260cc743bfae5963eda78b78fdcaf69e9bc11b81934e11b0102d8c39c38b"
+    },
+    {
+      "clause": "5.6.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 1209,
+          "end": 1459
+        }
+      ],
+      "span_sha256": "95dc3509b59f9db5d439252fb6af335e1f3f7d1c4a4529914dbb2c363a252760"
+    },
+    {
+      "clause": "5.6.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 1459,
+          "end": 1879
+        }
+      ],
+      "span_sha256": "3d9d84202d5f5df43c65b824ce550729b2099437811d3e62c2837a6a23cd19f8"
+    },
+    {
+      "clause": "5.6.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 1879,
+          "end": 2061
+        }
+      ],
+      "span_sha256": "d5c2449f0c38f4f1a480f5fadabd6eaf9463bdf17c669bb2421b24a464346824"
+    },
+    {
+      "clause": "5.7",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2061,
+          "end": 2093
+        }
+      ],
+      "span_sha256": "ccacfe7e30a327e1cbb53ce9f52a59b8921fedd7eea311647f248572f958cb51"
+    },
+    {
+      "clause": "5.7.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2093,
+          "end": 2346
+        }
+      ],
+      "span_sha256": "bb527820186dfedff015b5c9207e6e0c6ab9dd07ffa7c94467c7351e141b6eb4"
+    },
+    {
+      "clause": "5.7.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2346,
+          "end": 2557
+        }
+      ],
+      "span_sha256": "dbbf406824611dd12e7ad6e5e8f4df44e42af367bdef6c426009c5c26be3587d"
+    },
+    {
+      "clause": "5.7.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2557,
+          "end": 2719
+        }
+      ],
+      "span_sha256": "8330a07aae97281aa5d30f2753514be8b023602c76d10d2dbe8be6be9d48d489"
+    },
+    {
+      "clause": "5.7.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2719,
+          "end": 2849
+        }
+      ],
+      "span_sha256": "abc753631935dc30805fa102ca617728445c3e75844f76e023ce78344da7059c"
+    },
+    {
+      "clause": "5.7.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 2849,
+          "end": 3247
+        }
+      ],
+      "span_sha256": "ccf5376688ed48cbb2534ca578d9904db979fca5f56e4f27ca65236c2f989dc2"
+    },
+    {
+      "clause": "5.7.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 3247,
+          "end": 3477
+        }
+      ],
+      "span_sha256": "ba4ff939df2f37205d8ba38a89007275a4984fbb8e02b832ae48e918bfd8fc66"
+    },
+    {
+      "clause": "5.7.7",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 3477,
+          "end": 3670
+        }
+      ],
+      "span_sha256": "f7edaa0d80e65dd3ed672ab19cbdda8ff4eae517ac380633d9256ce5cb6206a9"
+    },
+    {
+      "clause": "5.7.8",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 11,
+          "start": 3670,
+          "end": 4258
+        },
+        {
+          "page": 12,
+          "start": 0,
+          "end": 119
+        }
+      ],
+      "span_sha256": "7fbec3420002ece244faf1b3778789a37a2307471a9324f0823f3e943cedf238"
+    },
+    {
+      "clause": "5.7.9",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 119,
+          "end": 442
+        }
+      ],
+      "span_sha256": "a3658b4898552cdc110e9e33c687c6f79e4f971f5112857bff241b463e85ceb8"
+    },
+    {
+      "clause": "5.7.10",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 442,
+          "end": 676
+        }
+      ],
+      "span_sha256": "edce9b7e23512ff48985524fc22af4da98d1354356e0571e0ed9e190198b6703"
+    },
+    {
+      "clause": "5.7.11",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 676,
+          "end": 941
+        }
+      ],
+      "span_sha256": "1bd72c816f5b01b080c6c0827a86bbc4e9b24fb3d3f08c469c7d22eaf61f5991"
+    },
+    {
+      "clause": "5.7.12",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 941,
+          "end": 1140
+        }
+      ],
+      "span_sha256": "ef066b00e3e3ccb1bfff12a06e18d86435f5cd4d8aacdbb31e2d4edcbf3e8261"
+    },
+    {
+      "clause": "5.7.13",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 1140,
+          "end": 1410
+        }
+      ],
+      "span_sha256": "335c3527f4d888c1141b3277353523deb8f61824474bee11d7c6ef03215d0ca5"
+    },
+    {
+      "clause": "5.7.14",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 1410,
+          "end": 1543
+        }
+      ],
+      "span_sha256": "aab378255fbd90c2e3db3f922329e40e07d82f94a8fbd5583fa6f9f25ca631e5"
+    },
+    {
+      "clause": "5.7.15",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 1543,
+          "end": 1837
+        }
+      ],
+      "span_sha256": "edfecd7cb2c179440f9b7b33983f247b9d78e7475d8cfe4b7102d5115b49c0f8"
+    },
+    {
+      "clause": "5.7.16",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 1837,
+          "end": 2298
+        }
+      ],
+      "span_sha256": "4913e40ccf48aafadbb1ba91d7d0e21762aaad00373c6a965dad720e3f9f7fd0"
+    },
+    {
+      "clause": "5.7.17",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 2298,
+          "end": 2455
+        }
+      ],
+      "span_sha256": "d5603e17d4ec07a16c8a148697a92f37520cc55a4bbec090b6908b85ce3376a1"
+    },
+    {
+      "clause": "5.8",
+      "kind": "heading",
+      "spans": [
+        {
+          "page": 12,
+          "start": 2455,
+          "end": 2564
+        }
+      ],
+      "span_sha256": "7a6f2e065ddddf15a2732d6de70d221c95ba142358219352a656473a783739db"
+    },
+    {
+      "clause": "5.8.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 2564,
+          "end": 3133
+        }
+      ],
+      "span_sha256": "8ce3858346c083a0f7bc27e068ad4c482e38dcba55cfb1772494de2c45942b4d"
+    },
+    {
+      "clause": "5.8.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 3133,
+          "end": 3518
+        }
+      ],
+      "span_sha256": "ab23b8a746b8c34e020a8a5a0dddfe9f68927dbe067a1220d46c531380a01c7b"
+    },
+    {
+      "clause": "5.8.2.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 3518,
+          "end": 4171
+        }
+      ],
+      "span_sha256": "47c10912ca59b22974bb1d2c9cff815086db82d827226fb30b8a497fcca65da2"
+    },
+    {
+      "clause": "5.8.2.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 4171,
+          "end": 4406
+        }
+      ],
+      "span_sha256": "aaacbbe918fe5906726cfec5fb260fc1d79952c71ec2aff39a3330848232be09"
+    },
+    {
+      "clause": "5.8.2.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 12,
+          "start": 4406,
+          "end": 4762
+        },
+        {
+          "page": 13,
+          "start": 0,
+          "end": 17
+        }
+      ],
+      "span_sha256": "59a8b53b34255e21eefc9555d6ac364a04825d1b985f42000e3e17bfff27f7e8"
+    },
+    {
+      "clause": "5.8.2.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 17,
+          "end": 585
+        }
+      ],
+      "span_sha256": "aee0b86c0b5a6259df1a9a43ab85c5116dac367fd4d24797b3618139ad4f985a"
+    },
+    {
+      "clause": "5.8.2.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 585,
+          "end": 1110
+        }
+      ],
+      "span_sha256": "206a46daa50d3e6cd44c8fd603447c76f89eae40c5c37e04b8311b1bd5a94508"
+    },
+    {
+      "clause": "5.8.2.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 1110,
+          "end": 1304
+        }
+      ],
+      "span_sha256": "42f13634f9634d1dfb282be02969f40d8b2626d1aca7ba744fffc8be38ca5c87"
+    },
+    {
+      "clause": "5.8.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 1304,
+          "end": 1643
+        }
+      ],
+      "span_sha256": "ce55734e0635f1fb19bad88dd0177f7d586c51faff7cd50315d2cea5acf0056a"
+    },
+    {
+      "clause": "5.9",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 1643,
+          "end": 2102
+        }
+      ],
+      "span_sha256": "95f123553fe66f1409b9645e74ad6bf8c31db69e017e72828a6191ea6c9e9ab9"
+    },
+    {
+      "clause": "6.1",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 2102,
+          "end": 3366
+        }
+      ],
+      "span_sha256": "2702b05d620f684c33c2f6ccee6bd90f8a749b6656015077285fbcf8ef8b7118"
+    },
+    {
+      "clause": "6.2",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 3366,
+          "end": 4017
+        }
+      ],
+      "span_sha256": "4a8460c793b0ab9a9af2972fcbf1cc993631bc74145b475b6933f94edf576eaf"
+    },
+    {
+      "clause": "6.3",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 13,
+          "start": 4017,
+          "end": 4388
+        },
+        {
+          "page": 14,
+          "start": 0,
+          "end": 118
+        }
+      ],
+      "span_sha256": "2cde36c1e473840e34615be5cfbb62d353192019d93f3b6d48a293ea73881d80"
+    },
+    {
+      "clause": "6.4",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 118,
+          "end": 429
+        }
+      ],
+      "span_sha256": "bada256ff88ee34c4cf343cac60e3e5b0275a56b64660f1c96a8c088bc6c59a1"
+    },
+    {
+      "clause": "6.5",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 429,
+          "end": 584
+        }
+      ],
+      "span_sha256": "e99da29752809fc246432ec3dbb852aab040a3185d2f99879b4b724a5c2d0b9f"
+    },
+    {
+      "clause": "6.6",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 584,
+          "end": 1004
+        }
+      ],
+      "span_sha256": "9e78ebe5fdb4fe9a44cca4cfd9c166c5399cd0a7296196ed84736b2799f01096"
+    },
+    {
+      "clause": "6.7",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1004,
+          "end": 1165
+        }
+      ],
+      "span_sha256": "fc41d06ae8398fdb1a03b8285da5e48de943a9c5fa63de1017ff3004ec7c2b6e"
+    },
+    {
+      "clause": "6.8",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1165,
+          "end": 1431
+        }
+      ],
+      "span_sha256": "22b3174ba2f84677904442cb825081293ea9f5f8b7185ec02036e53f4aff21cf"
+    },
+    {
+      "clause": "6.9",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1431,
+          "end": 1564
+        }
+      ],
+      "span_sha256": "a76a65f06fe30266ebe1bd45fa9b3bd26c065d60493a575a91ad809d83b00f56"
+    },
+    {
+      "clause": "6.10",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1564,
+          "end": 1650
+        }
+      ],
+      "span_sha256": "69aef88e3fda82c67206d2c5f909beb4f52e9a6fd2f1f2a35afea1af007c245e"
+    },
+    {
+      "clause": "6.11",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1650,
+          "end": 1891
+        }
+      ],
+      "span_sha256": "6ad916c1f3fdf571a05b4988fbe2b819a7e209e76435ac07b73182a00689d65e"
+    },
+    {
+      "clause": "6.12",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 1891,
+          "end": 2095
+        }
+      ],
+      "span_sha256": "fff2b45f92734db98ce0abc462e5ffab26db7a48df079f23e6880d4c14ac6175"
+    },
+    {
+      "clause": "6.13",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 2095,
+          "end": 2287
+        }
+      ],
+      "span_sha256": "084704277ba3fac0e0f0e56b7dc0a1da35198a61843ff3a72334c4b2df967d43"
+    },
+    {
+      "clause": "6.14",
+      "kind": "requirements",
+      "spans": [
+        {
+          "page": 14,
+          "start": 2287,
+          "end": 2710
+        }
+      ],
+      "span_sha256": "0c6516f19d6ac04ef3e70c96d35ff66bee4fab388e42a045a746533af14575bc"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "4.1/purpose",
+      "clause": "4.1",
+      "requirement": "ТУ задают требования к изделию, изготовлению, контролю, приёмке и поставке, которые нецелесообразно размещать в других КД.",
+      "condition": "",
+      "manual_check": "Проверить распределение требований между ТУ и остальными КД, отсутствие пропусков и противоречий.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.102—2013"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.1/decision",
+      "clause": "4.1",
+      "requirement": "Основание разработки ТУ — решение разработчика/заказчика, если оно не задано в ТЗ; ТУ входят в комплект КД.",
+      "condition": "",
+      "manual_check": "Предъявить ТЗ либо решение о разработке, сверить состав комплекта КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.2/delivery",
+      "clause": "4.2",
+      "requirement": "Как правило, ТУ разрабатывают для самостоятельной поставки; отдельные составные части требуют предусмотренного ТЗ основания либо согласования заказчика и разработчика.",
+      "condition": "",
+      "manual_check": "Подтвердить вид поставки узла и основание разработки ТУ на составную часть.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "recommendation"
+    },
+    {
+      "id": "4.2/one-off",
+      "clause": "4.2",
+      "requirement": "Для разового единичного изделия народнохозяйственного назначения допустима работа по ТЗ без ТУ.",
+      "condition": "Разовое единичное изготовление и соответствующее решение.",
+      "manual_check": "Проверить условия допустимого исключения; существующее ТУ автоматически не отменять.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 15.001"
+      ],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "4.3/scope",
+      "clause": "4.3",
+      "requirement": "Определить, относятся ТУ к одному изделию или к нескольким однотипным исполнениям; для групповых ТУ учитывать правила групповой КД.",
+      "condition": "",
+      "manual_check": "Сверить перечень изделий/исполнений и вид ТУ.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.113—75"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.3/increased",
+      "clause": "4.3",
+      "requirement": "Повышенные требования оформляют самостоятельными ТУ со ссылкой на действующие либо преобразованием действующих ТУ в групповые с дополнениями.",
+      "condition": "Разрабатывается изделие с повышенными требованиями относительно действующих ТУ.",
+      "manual_check": "Предъявить действующие ТУ и решение о варианте документации.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.4/consistency",
+      "clause": "4.4",
+      "requirement": "Требования ТУ не должны противоречить применимым стандартам с учётом национального законодательства.",
+      "condition": "",
+      "manual_check": "Построить перечень применимых НД и проверить технические требования; актуальность и правовую применимость подтвердить отдельно.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.4/references",
+      "clause": "4.4",
+      "requirement": "Требования стандартов не дублируют без необходимости: применимые требования задают ссылками по правилам текстовой КД.",
+      "condition": "",
+      "manual_check": "Проверить корректность ссылок и доступность полного содержания ОТУ/НД; обнаружение обозначения не проверяет его содержание.",
+      "automation": "references",
+      "dependencies": [
+        "ГОСТ 2.105—95"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.5/stage",
+      "clause": "4.5",
+      "requirement": "ТЗ может предусматривать разработку ТУ на любой стадии: проектные стадии — проекты ТУ, рабочие — рабочие ТУ.",
+      "condition": "Стадия и вид ТУ установлены ТЗ.",
+      "manual_check": "Сверить стадию разработки и статус документа.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.103—2013"
+      ],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "4.5/increased",
+      "clause": "4.5",
+      "requirement": "Примечание повторяет варианты самостоятельных либо групповых ТУ для изделия с повышенными требованиями.",
+      "condition": "Повышенные требования относительно действующего изделия.",
+      "manual_check": "Применить проверку 4.3/increased; не считать повтор второй независимой проверкой.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.6/designation",
+      "clause": "4.6",
+      "requirement": "Обозначение ТУ на машиностроительное/приборостроительное изделие обязательно и задаётся правилами ЕСКД.",
+      "condition": "",
+      "manual_check": "Сверить обозначение с основным КД и принятой системой обозначений; найденные обозначения — только навигационные сведения.",
+      "automation": "references",
+      "dependencies": [
+        "ГОСТ 2.102—2013",
+        "ГОСТ 2.104—2006",
+        "ГОСТ 2.201—80",
+        "ОК 012—93"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.6/draft",
+      "clause": "4.6",
+      "requirement": "Для проекта ТУ применяют правила обозначения эскизной КД с кодом ТУ в конце.",
+      "condition": "Проверяется проект ТУ, а не рабочие ТУ.",
+      "manual_check": "Подтвердить стадию и правильность присвоенного обозначения.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.201—80"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.6/legacy",
+      "clause": "4.6",
+      "requirement": "Допускается ранее действовавшая система обозначений при соблюдении общих правил обозначения КД.",
+      "condition": "Разработчик подтвердил использование прежней системы.",
+      "manual_check": "Зафиксировать основание; автоматически не перенумеровывать документ.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "4.7/form",
+      "clause": "4.7",
+      "requirement": "Допустимы бумажная и электронная формы; формат файла DOCX сам по себе не определяет формальную форму КД.",
+      "condition": "",
+      "manual_check": "Зафиксировать выбранную форму и вариант печатного оформления.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "4.8/a4",
+      "clause": "4.8",
+      "requirement": "Для бумажного ТУ основным форматом является А4.",
+      "condition": "",
+      "manual_check": "Сверить все листы с допустимыми форматами и исключениями для иллюстративных материалов.",
+      "automation": "page-size",
+      "dependencies": [
+        "ГОСТ 2.301—68"
+      ],
+      "form": "print",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.8/stamps",
+      "clause": "4.8",
+      "requirement": "Бумажные листы оформляют основными надписями форм 2/2а, титульный лист — по правилам текстовой КД.",
+      "condition": "",
+      "manual_check": "Проверить форму, размеры и заполнение штампов, реквизиты, подписи и титульный лист. Сохранение исходных рамок не доказывает их нормативную геометрию.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.104—2006",
+        "ГОСТ 2.105—95"
+      ],
+      "form": "print_framed",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.8/replacement",
+      "clause": "4.8",
+      "requirement": "В поле 6 титульного листа при необходимости размещают обозначение заменённого документа, дату введения или срок действия.",
+      "condition": "Документ заменяет предыдущий либо требуется дата/срок действия.",
+      "manual_check": "Сверить решение о замене и фактические реквизиты; даты и подписи не придумывать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "print",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.8/illustrative",
+      "clause": "4.8",
+      "requirement": "Форматы схем, чертежей и таблиц, иллюстрирующих ТУ, выбирают по правилам форматов; основная надпись — форма 2.",
+      "condition": "",
+      "manual_check": "Проверить иллюстративные листы и необходимость отдельного формата.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.301—68",
+        "ГОСТ 2.104—2006"
+      ],
+      "form": "print",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.8/frameless",
+      "clause": "4.8",
+      "requirement": "Допустим подлинник без рамок/штампов, но тогда обозначение ставят на каждом листе в предусмотренном углу с учётом односторонней/двусторонней печати.",
+      "condition": "",
+      "manual_check": "Проверить каждый лист и режим печати; существующие рамки автоматически не удалять.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "print_frameless",
+      "modality": "permission"
+    },
+    {
+      "id": "4.8/frameless-signatures",
+      "clause": "4.8",
+      "requirement": "При варианте без рамок подписи и литеры из основной надписи переносят на титульный лист.",
+      "condition": "",
+      "manual_check": "Сверить все предусмотренные подписи и литеры; не генерировать их.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.104—2006"
+      ],
+      "form": "print_frameless",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.8/frameless-changes",
+      "clause": "4.8",
+      "requirement": "При варианте без рамок изменения оформляют по правилам изменений КД и указывают в листе регистрации в конце ТУ.",
+      "condition": "",
+      "manual_check": "Проверить лист регистрации, его положение и записи об изменениях.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.503—2013"
+      ],
+      "form": "print_frameless",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.9/electronic",
+      "clause": "4.9",
+      "requirement": "Электронное ТУ оформляют как электронный КД; для передачи применяют специальные правила передачи и пакетов данных.",
+      "condition": "",
+      "manual_check": "Проверить формальный электронный документ и комплект передачи; наличие DOCX не является выполнением этих правил.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.051—2013",
+        "ГОСТ 2.511—2011",
+        "ГОСТ 2.512—2011"
+      ],
+      "form": "electronic",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.9/electronic-graphics",
+      "clause": "4.9",
+      "requirement": "Иллюстративные графические материалы электронного ТУ выполняют по соответствующим стандартам ЕСКД без рамок, основной надписи и дополнительных граф.",
+      "condition": "",
+      "manual_check": "Проверить вид электронных графических КД; печатные рамки автоматически не удалять.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "electronic",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.9/electronic-metadata",
+      "clause": "4.9",
+      "requirement": "Реквизитную часть электронного ТУ оформляют по специальным правилам электронных КД.",
+      "condition": "",
+      "manual_check": "Проверить полный набор реквизитов и подтверждение подлинности.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.058—2016"
+      ],
+      "form": "electronic",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.10/text",
+      "clause": "4.10",
+      "requirement": "Текст ТУ выполняют по правилам текстовых КД.",
+      "condition": "",
+      "manual_check": "Профиль выполняет только выбранные операции оформления. Сверить остальные требования и применимость новой редакции вместо указанной в источнике.",
+      "automation": "text-profile",
+      "dependencies": [
+        "ГОСТ 2.105—95"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.10/lifecycle",
+      "clause": "4.10",
+      "requirement": "Учёт и хранение ТУ, а также внесение изменений подчиняются отдельным стандартам.",
+      "condition": "",
+      "manual_check": "Проверить регистрацию, хранение подлинника, управление версиями и извещения об изменениях.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.501—2013",
+        "ГОСТ 2.503—2013"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.11/catalog-sheet",
+      "clause": "4.11",
+      "requirement": "Для информирования потребителей заполняют каталожный лист в установленном национальным органом порядке.",
+      "condition": "",
+      "manual_check": "Подтвердить применимый порядок и наличие каталожного листа; его нет в автоматическом оформлении.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "4.12/non-machinery",
+      "clause": "4.12",
+      "requirement": "Допускается применять стандарт к немашиностроительной продукции; обозначение рекомендуют определять по национальному классификатору и соответствующим НД.",
+      "condition": "Продукция разрабатывается и применяется вне ЕСКД.",
+      "manual_check": "Подтвердить вид продукции; для нашего узла не объявлять применимость этой ветви без решения разработчика.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "5.1.1/sections",
+      "clause": "5.1.1",
+      "requirement": "Общая последовательность: вводная часть, технические требования, безопасность, охрана окружающей среды, приёмка, контроль/испытания, эксплуатация/хранение/транспортирование/утилизация, гарантии.",
+      "condition": "",
+      "manual_check": "Сверить фактический состав, порядок и содержание, учитывая 5.1.2. По одним заголовкам выполнение не подтверждается.",
+      "automation": "section-outline",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.1.2/developer",
+      "clause": "5.1.2",
+      "requirement": "Состав и содержание определяет разработчик по особенностям изделия, если они не заданы ТЗ; разделы допустимо добавлять, исключать и объединять.",
+      "condition": "",
+      "manual_check": "Предъявить ТЗ либо зафиксированное решение разработчика об объединённых/исключённых разделах.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "5.1.2/defense",
+      "clause": "5.1.2",
+      "requirement": "Для заказа Министерства обороны состав и содержание согласуют с заказчиком/ПЗ.",
+      "condition": "Изделие разрабатывается по заказу Министерства обороны.",
+      "manual_check": "Подтвердить категорию заказа и документ согласования; из названия изделия это не выводится.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.2.1/intro",
+      "clause": "5.2.1",
+      "requirement": "Введение включает наименование, обозначение, при необходимости область применения и условия эксплуатации.",
+      "condition": "",
+      "manual_check": "Проверить полноту каждого элемента и соответствие назначению; автоматическое наблюдение находит лишь вводную формулу.",
+      "automation": "intro",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.2.2/identity",
+      "clause": "5.2.2",
+      "requirement": "Наименование и обозначение изделия во введении должны совпадать с основным КД.",
+      "condition": "",
+      "manual_check": "Предъявить основной КД и сопоставить полные обозначения/наименования, а не только похожие слова.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.2.3/opening",
+      "clause": "5.2.3",
+      "requirement": "Введение начинают установленной формулировкой о распространении настоящих технических условий на указанное изделие.",
+      "condition": "",
+      "manual_check": "Проверить точную формулировку и вставленные наименование/обозначение; обнаружение начала абзаца не подтверждает всю форму.",
+      "automation": "intro",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.2.4/ordering",
+      "clause": "5.2.4",
+      "requirement": "В конце введения приводят пример записи изделия в других КД и/или при заказе.",
+      "condition": "",
+      "manual_check": "Проверить наличие и корректность примера заказа; обозначение, упомянутое в тексте, не заменяет такой пример.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.2.5/inventions",
+      "clause": "5.2.5",
+      "requirement": "При использовании изобретений сведения о них помещают последним абзацем введения.",
+      "condition": "В изделии использованы изобретения.",
+      "manual_check": "Подтвердить сведения о применённых изобретениях и их место; при отсутствии сведений условие остаётся открытым.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.1/quality",
+      "clause": "5.3.1",
+      "requirement": "Раздел задаёт показатели качества и эксплуатационные характеристики; обычно включает параметры/свойства, материалы/покупные изделия, комплектность, маркировку и упаковку.",
+      "condition": "",
+      "manual_check": "Проверить охват подразделов с учётом 5.1.2, не считать одну найденную фразу полным выполнением.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2/opening",
+      "clause": "5.3.2",
+      "requirement": "Подраздел параметров начинают указанием соответствия изделия настоящим ТУ и комплекту КД с обозначением основного КД.",
+      "condition": "",
+      "manual_check": "Сверить вводную формулу, основной КД и обозначение.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2/common",
+      "clause": "5.3.2",
+      "requirement": "Если имеются общие технические требования/условия, на них дают ссылку в этом же месте.",
+      "condition": "На изделие распространяются общие технические требования или ОТУ.",
+      "manual_check": "Получить и проверить указанные ОТУ; наличие ссылки не подтверждает содержание и полноту требований.",
+      "automation": "references",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/identity",
+      "clause": "5.3.2.1",
+      "requirement": "Параметры определяют тип/вид/марку/модель; при необходимости включают изображение с габаритными, установочными и присоединительными размерами либо ссылки на соответствующие КД.",
+      "condition": "Размерные изображения/ссылки нужны в зависимости от особенностей изделия.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/variants",
+      "clause": "5.3.2.1",
+      "requirement": "Для групповых ТУ указывают обозначения исполнений; ссылочные чертежи, модели, структуры и схемы допустимо помещать в приложения.",
+      "condition": "Проверить, являются ли ТУ групповыми и какие исполнения охватывают.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/function",
+      "clause": "5.3.2.1",
+      "requirement": "Устанавливают назначение, основные функции, производительность, точность, быстродействие, состав/структуру и требуемые физические, механические и иные свойства.",
+      "condition": "Набор показателей выбирается по свойствам изделия.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/compatibility",
+      "clause": "5.3.2.1",
+      "requirement": "Определяют применимые виды совместимости и взаимозаменяемости, включая функциональную, геометрическую, электромагнитную, электрическую, программную, метрологическую и информационную.",
+      "condition": "Применимые виды подтверждает разработчик.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/reliability",
+      "clause": "5.3.2.1",
+      "requirement": "Определяют надёжность во времени и при обслуживании, ремонте, хранении и транспортировании, включая применимые комплексные/единичные показатели.",
+      "condition": "Подтвердить требуемые показатели безотказности, долговечности, ремонтопригодности и сохраняемости.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/radio-protection",
+      "clause": "5.3.2.1",
+      "requirement": "Устанавливают применимые требования радиоэлектронной защиты, помехозащищённости и защиты от собственных/внешних излучений.",
+      "condition": "Виды воздействий и нужность требований подтверждает разработчик.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/external-effects",
+      "clause": "5.3.2.1",
+      "requirement": "Определяют стойкость/живучесть при механических, климатических и специальных воздействиях во время и после воздействия сопрягаемых объектов и среды.",
+      "condition": "Сверить вибрации/удары, температуру/влажность/давление, влагу/пыль/соляной туман и применимые специальные воздействия.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/ergonomics",
+      "clause": "5.3.2.1",
+      "requirement": "Проверяют согласование характеристик изделия с возможностями и свойствами человека, включая рабочие места обслуживающего персонала.",
+      "condition": "Применимость и показатели определяются способом обслуживания.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/resources",
+      "clause": "5.3.2.1",
+      "requirement": "Устанавливают необходимые показатели экономного расхода сырья, материалов, топлива, энергии и трудовых ресурсов при изготовлении и заданном режиме применения.",
+      "condition": "Определить значимые показатели и основания их выбора.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/manufacturability",
+      "clause": "5.3.2.1",
+      "requirement": "Определяют технологичность изготовления, эксплуатации и ремонта с заданным качеством и затратами.",
+      "condition": "Показатели выбираются по виду изделия и стадии разработки.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.1/construction",
+      "clause": "5.3.2.1",
+      "requirement": "Задают конструктивные решения: предельные масса/габариты, внешние связи и совместимость, материалы/покрытия, предотвращение ошибочной сборки/подключения, базовые конструкции и модульность.",
+      "condition": "Каждый относящийся к изделию аспект подтвердить по основным КД.",
+      "manual_check": "Сопоставить этот аспект с ТЗ, основным КД, ОТУ и обоснованными показателями; численные нормы не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.2/conditions",
+      "clause": "5.3.2.2",
+      "requirement": "Показатели и требования связывают с режимами/условиями эксплуатации и контроля.",
+      "condition": "",
+      "manual_check": "Проверить, при каких условиях действуют каждое значение, допуск и критерий испытания.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.3/process-conditions",
+      "clause": "5.3.2.3",
+      "requirement": "Если свойство обеспечивается соблюдением иных требований вместо количественного показателя, эти условия явно описывают.",
+      "condition": "Нужный результат обеспечивают технологией, покрытиями, оснащением, тренировкой, выдержкой или иными условиями.",
+      "manual_check": "Проверить однозначность и достаточность условий, включая требования к производственной среде и исполнителям.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.2.4/service-life",
+      "clause": "5.3.2.4",
+      "requirement": "Для изделий, опасных после определённого срока, устанавливают срок службы и непригодность дальнейшего применения.",
+      "condition": "Изделие относится к соответствующей категории опасности по истечении срока.",
+      "manual_check": "Подтвердить категорию, обоснование срока службы и ограничение дальнейшего использования.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.3/purchased",
+      "clause": "5.3.3",
+      "requirement": "Требования к покупным изделиям, жидкостям, смазкам, краскам и другим материалам.",
+      "condition": "Соответствующая группа материалов/изделий используется.",
+      "manual_check": "Сверить спецификацию и материалы с ТЗ/НД; ненужность группы подтвердить, а не выводить из отсутствия текста.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.3/valuable",
+      "clause": "5.3.3",
+      "requirement": "Требования к драгоценным материалам, цветным металлам/сплавам и порядку их учёта.",
+      "condition": "Соответствующая группа материалов/изделий используется.",
+      "manual_check": "Сверить спецификацию и материалы с ТЗ/НД; ненужность группы подтвердить, а не выводить из отсутствия текста.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.3/recycled",
+      "clause": "5.3.3",
+      "requirement": "Требования к вторичному сырью и отходам промышленного производства.",
+      "condition": "Соответствующая группа материалов/изделий используется.",
+      "manual_check": "Сверить спецификацию и материалы с ТЗ/НД; ненужность группы подтвердить, а не выводить из отсутствия текста.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.4/delivery-set",
+      "clause": "5.3.4",
+      "requirement": "В комплектность включают отдельно поставляемые СЧ, ЗИП, материалы и сопровождающую КД.",
+      "condition": "",
+      "manual_check": "Сопоставить фактический комплект поставки со спецификацией/ведомостями.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.4/large-set",
+      "clause": "5.3.4",
+      "requirement": "При большой номенклатуре рекомендуют ссылки на спецификацию, ведомость ЗИП и ведомость эксплуатационных документов.",
+      "condition": "Большая номенклатура комплекта.",
+      "manual_check": "Проверить полноту ссылочных ведомостей и их обозначений.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "recommendation"
+    },
+    {
+      "id": "5.3.5/location",
+      "clause": "5.3.5",
+      "requirement": "Определяют место маркировки: изделие, этикетка, упаковка или иной предусмотренный носитель.",
+      "condition": "",
+      "manual_check": "Сверить маркировочные данные и чертежи/этикетки с комплектом КД и применимыми НД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.5/manufacturer",
+      "clause": "5.3.5",
+      "requirement": "Указывают предусмотренные сведения о местонахождении изготовителя.",
+      "condition": "",
+      "manual_check": "Сверить маркировочные данные и чертежи/этикетки с комплектом КД и применимыми НД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.5/content",
+      "clause": "5.3.5",
+      "requirement": "Определяют содержание маркировки, включая транспортную.",
+      "condition": "",
+      "manual_check": "Сверить маркировочные данные и чертежи/этикетки с комплектом КД и применимыми НД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.5/method",
+      "clause": "5.3.5",
+      "requirement": "Определяют способ нанесения маркировки.",
+      "condition": "",
+      "manual_check": "Сверить маркировочные данные и чертежи/этикетки с комплектом КД и применимыми НД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.5.1/identification",
+      "clause": "5.3.5.1",
+      "requirement": "Как правило, содержание маркировки включает зарегистрированный товарный знак и/или наименование организации.",
+      "condition": "",
+      "manual_check": "Подтвердить право использования знака и идентификацию изготовителя.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "recommendation"
+    },
+    {
+      "id": "5.3.5.1/certification",
+      "clause": "5.3.5.1",
+      "requirement": "При сертификации предусматривают применимые знаки соответствия и обозначение стандарта на знак.",
+      "condition": "Изделие подлежит соответствующей сертификации.",
+      "manual_check": "Проверить основания сертификации и допустимость знаков; сертификаты не создавать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.5.2/safety-marking",
+      "clause": "5.3.5.2",
+      "requirement": "Если безопасность зависит от специальных условий, их отражают в требованиях к маркировке: меры предосторожности в жизненном цикле, пожарная/взрывная безопасность, сроки осмотра, контроля и переконсервации.",
+      "condition": "При эксплуатации необходимо соблюдать специальные требования для безопасности.",
+      "manual_check": "Сверить предупреждения, периодичности и носители с анализом опасностей и эксплуатационной КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/preparation",
+      "clause": "5.3.6",
+      "requirement": "Описывают подготовку к упаковыванию, включая нужные демонтаж/консервацию и средства.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/containers",
+      "clause": "5.3.6",
+      "requirement": "Задают потребительскую/транспортную, в том числе многооборотную тару, вспомогательные материалы и применимые требования эстетики.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/quantity",
+      "clause": "5.3.6",
+      "requirement": "Указывают количество изделий в единице потребительской упаковки и транспортной тары.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/method",
+      "clause": "5.3.6",
+      "requirement": "Определяют способы упаковывания для условий транспортирования.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/placement",
+      "clause": "5.3.6",
+      "requirement": "Определяют порядок размещения и укладывания изделий.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.3.6/documents",
+      "clause": "5.3.6",
+      "requirement": "Перечисляют вкладываемую КД и способ её упаковывания.",
+      "condition": "",
+      "manual_check": "Сверить применимый аспект упаковки с комплектом КД, условиями поставки и решением разработчика по 5.1.2.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/hazards",
+      "clause": "5.4",
+      "requirement": "Раздел охватывает все применимые опасности и обеспечивает безопасность изделия на протяжении срока службы.",
+      "condition": "",
+      "manual_check": "Предъявить анализ опасностей и проверить полноту содержания независимо от наличия отдельного заголовка.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/electrical",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Электробезопасность.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/fire",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Пожарная безопасность.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/explosion",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Взрывобезопасность.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/radiation",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Радиационная безопасность.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/chemical",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Воздействие химических/загрязняющих веществ и применимые предельно допустимые концентрации.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/service",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Безопасность обслуживания, включая ошибочные действия и самопроизвольные нарушения функционирования.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/protection",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Ограждения, ограничения, блокировки, фиксаторы, оснащение рабочих мест, органы управления/контроля и аварийная сигнализация.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/signs",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Сигнальные цвета и знаки безопасности.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/localization",
+      "clause": "5.4",
+      "requirement": "Проверить требования: Удаление, снижение и локализация опасных и вредных факторов в месте образования.",
+      "condition": "Данный вид опасности/защиты относится к изделию.",
+      "manual_check": "Подтвердить применимость и достаточность мер по анализу опасностей, ТЗ, техническим регламентам и КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/additional",
+      "clause": "5.4",
+      "requirement": "При необходимости указывают класс опасности, уровни факторов, действие веществ, токсичные/пожаро-/взрывоопасные соединения, предупреждение самовозгорания/взрыва и обезвреживание/захоронение.",
+      "condition": "Имеются соответствующие факторы опасности.",
+      "manual_check": "Сверить каждый значимый фактор и способ его предупреждения/обезвреживания.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.4/regulations",
+      "clause": "5.4",
+      "requirement": "Требования безопасности не должны противоречить применимым техническим регламентам.",
+      "condition": "",
+      "manual_check": "Компетентный специалист подтверждает перечень действующих регламентов и соответствие требований; текущий правовой статус автоматически не проверялся.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.5.1/lifecycle",
+      "clause": "5.5.1",
+      "requirement": "Предусматривают предупреждение вреда окружающей среде и человеку при испытании, хранении, перевозке, эксплуатации и утилизации.",
+      "condition": "",
+      "manual_check": "Сопоставить экологические требования со всеми стадиями жизненного цикла и составом изделия.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.5.2/effects",
+      "clause": "5.5.2",
+      "requirement": "Нормируют допустимые уровень и длительность химических, механических, радиационных, электромагнитных, тепловых и биологических воздействий.",
+      "condition": "Соответствующие воздействия/вещества/отходы относятся к изделию.",
+      "manual_check": "Подтвердить применимость, нормативные значения и процедуры по экологическим НД; нормы не придумывать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.5.2/persistence",
+      "clause": "5.5.2",
+      "requirement": "Проверяют требования к устойчивости загрязняющих/ядовитых веществ в объектах окружающей среды.",
+      "condition": "Соответствующие воздействия/вещества/отходы относятся к изделию.",
+      "manual_check": "Подтвердить применимость, нормативные значения и процедуры по экологическим НД; нормы не придумывать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.5.2/disposal",
+      "clause": "5.5.2",
+      "requirement": "Определяют требования к утилизации и местам захоронения опасных изделий/отходов.",
+      "condition": "Соответствующие воздействия/вещества/отходы относятся к изделию.",
+      "manual_check": "Подтвердить применимость, нормативные значения и процедуры по экологическим НД; нормы не придумывать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.1/acceptance",
+      "clause": "5.6.1",
+      "requirement": "Описывают контроль, предъявление и приёмку ОТК/заказчиком, размер партий, необходимость и время выдержки, предъявительскую документацию и оформление результатов.",
+      "condition": "",
+      "manual_check": "Проверить каждый элемент порядка приёмки и сопоставить с договорами/ТЗ.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.2/categories",
+      "clause": "5.6.2",
+      "requirement": "Устанавливают нужные программы/методики испытаний, порядок использования/хранения испытанных изделий и необходимость отбора/хранения образцов для повторных испытаний.",
+      "condition": "",
+      "manual_check": "Подтвердить категории испытаний и дальнейшую судьбу изделий/образцов.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.3/matrix",
+      "clause": "5.6.3",
+      "requirement": "Для каждой категории задают периодичность, число образцов, перечень проверяемых параметров/норм/характеристик и последовательность контроля.",
+      "condition": "",
+      "manual_check": "Проверить связь таблиц испытаний со всеми требованиями, частоту и выборку; порядок изменения последовательности оговорить отдельно.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.4/sampling",
+      "clause": "5.6.4",
+      "requirement": "Выборочный/статистический контроль требует плана: партия, выборка/пробы, нормативы и правила.",
+      "condition": "Применяется выборочный или статистический контроль.",
+      "manual_check": "Сверить план контроля и статистическое обоснование; одна численность выборки не достаточна.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.5/rejection",
+      "clause": "5.6.5",
+      "requirement": "Задают приёмку, браковку и возобновление приёмки после анализа/устранения дефектов, окончательное забракование; запрет повторного контроля возвращённых изделий оговаривают отдельно.",
+      "condition": "",
+      "manual_check": "Проверить все исходы отрицательных испытаний, повторную приёмку и критерии окончательного отказа.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.6.6/marks",
+      "clause": "5.6.6",
+      "requirement": "При необходимости устанавливают место и порядок клейм, штампов и пломб, подтверждающих приёмку.",
+      "condition": "Приёмку подтверждают такими отметками.",
+      "manual_check": "Проверить полномочия, места и порядок нанесения отметок; отметки не генерировать.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.1/coverage",
+      "clause": "5.7.1",
+      "requirement": "Методы, программы и режимы контроля охватывают параметры и требования, проверка которых предусмотрена правилами приёмки.",
+      "condition": "",
+      "manual_check": "Построить матрицу «требование — категория испытания — метод — критерий» и проверить отсутствие пропусков.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.2/reproducibility",
+      "clause": "5.7.2",
+      "requirement": "Методы контроля должны быть объективными, ясными, точными и обеспечивать последовательные воспроизводимые результаты.",
+      "condition": "",
+      "manual_check": "Эксперт проверяет однозначность операций, условий, расчётов и критериев; наличие слов «проверка» недостаточно.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.3/realistic",
+      "clause": "5.7.3",
+      "requirement": "Условия/программы/методы контроля максимально приближают к условиям использования изделия.",
+      "condition": "",
+      "manual_check": "Сопоставить испытательные и эксплуатационные условия, обосновать различия.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.4/alternatives",
+      "clause": "5.7.4",
+      "requirement": "Допустимы несколько эквивалентных методов/программ контроля.",
+      "condition": "Используются альтернативные методы.",
+      "manual_check": "Подтвердить эквивалентность и область применения каждого метода.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "5.7.5/sampling",
+      "clause": "5.7.5",
+      "requirement": "Для каждого метода с учётом специфики определяют: Методы отбора проб/образцов.",
+      "condition": "",
+      "manual_check": "Сверить этот элемент для каждого применяемого метода, в том числе допустимые ссылки вместо повторения по 5.7.6/5.7.16.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.5/resources",
+      "clause": "5.7.5",
+      "requirement": "Для каждого метода с учётом специфики определяют: Оборудование, материалы и реактивы.",
+      "condition": "",
+      "manual_check": "Сверить этот элемент для каждого применяемого метода, в том числе допустимые ссылки вместо повторения по 5.7.6/5.7.16.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.5/preparation",
+      "clause": "5.7.5",
+      "requirement": "Для каждого метода с учётом специфики определяют: Подготовка к контролю/измерению/испытанию/анализу.",
+      "condition": "",
+      "manual_check": "Сверить этот элемент для каждого применяемого метода, в том числе допустимые ссылки вместо повторения по 5.7.6/5.7.16.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.5/operations",
+      "clause": "5.7.5",
+      "requirement": "Для каждого метода с учётом специфики определяют: Проведение контроля.",
+      "condition": "",
+      "manual_check": "Сверить этот элемент для каждого применяемого метода, в том числе допустимые ссылки вместо повторения по 5.7.6/5.7.16.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.5/processing",
+      "clause": "5.7.5",
+      "requirement": "Для каждого метода с учётом специфики определяют: Обработка результатов.",
+      "condition": "",
+      "manual_check": "Сверить этот элемент для каждого применяемого метода, в том числе допустимые ссылки вместо повторения по 5.7.6/5.7.16.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.6/shared",
+      "clause": "5.7.6",
+      "requirement": "Общие требования нескольких методов описывают у первого, а в остальных дают ссылки на него.",
+      "condition": "Требования методов повторяются.",
+      "manual_check": "Проверить точность ссылок и отсутствие потерянных отличий методов.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.7/sample-details",
+      "clause": "5.7.7",
+      "requirement": "Для отбора указывают место, способ и количество проб/образцов; для средней пробы — метод её получения.",
+      "condition": "Метод предусматривает отбор образцов/проб.",
+      "manual_check": "Проверить однозначность отбора и применимость понятия средней пробы.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.8/equipment",
+      "clause": "5.7.8",
+      "requirement": "Указывают средства контроля и нормы их погрешности, а также материалы и реактивы.",
+      "condition": "",
+      "manual_check": "Сверить перечень/приложение со всеми методами; проверить погрешности и достаточность точности для допусков изделия.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.8/specific",
+      "clause": "5.7.8",
+      "requirement": "Если требуется конкретный вид/марка средства, материала или реактива, дают условное обозначение и документы поставки.",
+      "condition": "Нужно однозначно задать конкретный вид или марку.",
+      "manual_check": "Сверить обозначения и документы поставки с фактическими средствами контроля.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.9/special",
+      "clause": "5.7.9",
+      "requirement": "Для специально изготовленных средств/материалов/реактивов дают описание, рецептуру либо документацию изготовления и контроля качества.",
+      "condition": "Используются специально изготовленные средства контроля, материалы или реактивы.",
+      "manual_check": "Получить документацию стенда/оснастки и подтвердить возможность воспроизведения контроля.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.10/equivalent",
+      "clause": "5.7.10",
+      "requirement": "Разрешённую эквивалентную замену средств контроля описывают конкретно, с особенностями применения; указывают арбитражное средство.",
+      "condition": "Допускается эквивалентная замена.",
+      "manual_check": "Проверить конкретные условия замены и какое средство является арбитражным; общая фраза «аналогичные» не даёт полного подтверждения.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.11/preparation",
+      "clause": "5.7.11",
+      "requirement": "Описывают подготовку самого изделия, средств контроля, материалов и реактивов.",
+      "condition": "",
+      "manual_check": "Проверить начальные состояния, подключения, выдержки и подготовительные операции.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.12/sequence",
+      "clause": "5.7.12",
+      "requirement": "Задают последовательность и описание операций контроля, а при необходимости порядок ведения записей.",
+      "condition": "",
+      "manual_check": "Проверить воспроизводимость последовательности и полноту регистрации результатов.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.13/adjustment",
+      "clause": "5.7.13",
+      "requirement": "Подстройка и операции, аналогичные эксплуатационным, должны выполняться методами эксплуатационной документации.",
+      "condition": "Контроль включает регулировку/подстройку или аналогичные эксплуатации операции.",
+      "manual_check": "Предъявить эксплуатационные документы и сопоставить методы.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.14/precautions",
+      "clause": "5.7.14",
+      "requirement": "В описании метода контроля приводят требования техники безопасности и особые меры предосторожности.",
+      "condition": "",
+      "manual_check": "Проверить опасные напряжения, подключения, разрядку, последовательность питания и иные меры по конкретной схеме испытаний.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.15/calculations",
+      "clause": "5.7.15",
+      "requirement": "Для обработки результатов задают формулы, точность вычислений, степень конкретизации данных и допустимые расхождения параллельных определений.",
+      "condition": "Метод предусматривает соответствующую обработку/параллельные определения.",
+      "manual_check": "Проверить формулы, округление, единицы и критерии; синтаксическое оформление формул не доказывает их правильность.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.16/external",
+      "clause": "5.7.16",
+      "requirement": "Установленные в применимых стандартах/НД/инструкциях или соответствующих КД методы, программы и средства контроля заменяют ссылкой на документ.",
+      "condition": "",
+      "manual_check": "Получить полный ссылочный документ, проверить редакцию, применимость и соответствие указанных пунктов.",
+      "automation": "references",
+      "dependencies": [
+        "ГОСТ 2.102—2013",
+        "ГОСТ 2.106—96"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.7.17/diagrams",
+      "clause": "5.7.17",
+      "requirement": "При необходимости в ТУ или приложениях приводят схемы соединения средств контроля с изделием.",
+      "condition": "Для воспроизводимого контроля нужна схема соединения.",
+      "manual_check": "Проверить электрические связи, обозначения, соответствие оборудования и методов. Обработчик размещает существующую иллюстрацию, но не доказывает правильность схемы.",
+      "automation": "figure-layout",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.1/operation",
+      "clause": "5.8.1",
+      "requirement": "Устанавливают требования эксплуатации, установки, монтажа и применения: соединения с другими изделиями, температуры/среды, критерии контроля и особые условия/защиту/обслуживание.",
+      "condition": "",
+      "manual_check": "Сопоставить эксплуатационные условия с ТЗ, руководствами и испытаниями; проверить полноту применимых аспектов.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2/preservation",
+      "clause": "5.8.2",
+      "requirement": "Условия хранения и перевозки обеспечивают сохранность и безопасность изделия.",
+      "condition": "",
+      "manual_check": "Сверить условия сохранности и безопасность для всех стадий.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2/external",
+      "clause": "5.8.2",
+      "requirement": "Требования хранения/перевозки излагают при отсутствии соответствующих стандартов и иных НД на изделие.",
+      "condition": "Применимые условия не заданы другим НД.",
+      "manual_check": "Получить применимые НД/ОТУ, определить допустимое использование ссылки вместо повторения.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.1/storage",
+      "clause": "5.8.2.1",
+      "requirement": "Определяют место хранения, защиту от среды, температуру/влажность; при необходимости — осмотры, регламентные работы, консервацию, марки материалов и документы поставки либо ссылки.",
+      "condition": "Применима ветвь изложения условий хранения по 5.8.2/5.8.2.6.",
+      "manual_check": "Проверить все условия и основания выбора, включая сроки/периодичности.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.2/stacking",
+      "clause": "5.8.2.2",
+      "requirement": "Задают укладывание/складирование и специальные правила для ядовитых, огнеопасных, взрывоопасных и подобных изделий.",
+      "condition": "Применимы собственные условия хранения; специальные риски подтверждаются отдельно.",
+      "manual_check": "Проверить способы укладки и нужность специальных мер.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.3/order",
+      "clause": "5.8.2.3",
+      "requirement": "Правила хранения располагают в порядке: место, условия хранения, складирование, специальные правила/сроки при необходимости.",
+      "condition": "ТУ содержат собственные правила хранения.",
+      "manual_check": "Проверить порядок и полноту текста, а не только наличие раздела.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.4/transport",
+      "clause": "5.8.2.4",
+      "requirement": "Указывают виды транспорта/средств, крепление и укрытие, специальную тару/транспорт, места/массу, габариты тары и её размещение.",
+      "condition": "ТУ содержат собственные требования транспортирования.",
+      "manual_check": "Сверить применимые параметры поставки и транспортной КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.5/transport-conditions",
+      "clause": "5.8.2.5",
+      "requirement": "Задают параметры перевозки, допустимые механические/температурные/климатические воздействия, защиту при погрузке, обращение после температурных воздействий и расконсервацию.",
+      "condition": "ТУ содержат собственные требования транспортирования.",
+      "manual_check": "Проверить значимые условия и специальные меры для изделия.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.2.6/no-duplication",
+      "clause": "5.8.2.6",
+      "requirement": "Собственные условия хранения/транспортирования нужны при отсутствии соответствующих НД либо КД с этими условиями.",
+      "condition": "Проверить наличие внешнего документа с условиями.",
+      "manual_check": "Сверить ссылочные НД/КД до признания отсутствия текста недостатком.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.3/preparation",
+      "clause": "5.8.3",
+      "requirement": "Описывают подготовку и отправку изделия на утилизацию.",
+      "condition": "",
+      "manual_check": "Сверить процедуру с составом изделия и применимыми НД/КД.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.8.3/hazardous",
+      "clause": "5.8.3",
+      "requirement": "Для опасного после службы изделия задают методы утилизации либо ссылки на НД/КД.",
+      "condition": "После службы изделие опасно для людей или окружающей среды.",
+      "manual_check": "Подтвердить опасность и полноту метода/ссылки.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.9/warranty",
+      "clause": "5.9",
+      "requirement": "Устанавливают права и обязанности изготовителя по гарантиям в соответствии с применимым законодательством.",
+      "condition": "",
+      "manual_check": "Разработчик/изготовитель и компетентный специалист подтверждают условия, сроки и правовую применимость; гарантии автоматически не придумываются.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "5.9/defense",
+      "clause": "5.9",
+      "requirement": "Для заказа Министерства обороны порядок раздела задают соответствующим НД либо согласуют с заказчиком/ПЗ.",
+      "condition": "Изделие разрабатывается по заказу Министерства обороны.",
+      "manual_check": "Предъявить соответствующий НД или согласование.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.1/commission",
+      "clause": "6.1",
+      "requirement": "Если решение о постановке на производство принимает приёмочная комиссия, ТУ согласуют/утверждают в составе комплекта КД на комиссии.",
+      "condition": "Есть приёмочная комиссия с указанными полномочиями.",
+      "manual_check": "Предъявить решение о комиссии, состав направляемого комплекта по ТЗ/разработчику и акт.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 15.000—82"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.1/send",
+      "clause": "6.1",
+      "requirement": "Разработчик согласует ТУ в составе КД с заказчиком и направляет в организации комиссии не позднее месяца до начала работы.",
+      "condition": "Применяется согласование через приёмочную комиссию.",
+      "manual_check": "Проверить адресатов, даты направления и начала работы; сроки по самому DOCX не устанавливаются.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.1/act",
+      "clause": "6.1",
+      "requirement": "Подписи членов комиссии в акте приёмки комплекта КД означают согласование, включая ТУ.",
+      "condition": "Согласование оформляется актом комиссии.",
+      "manual_check": "Проверить акт, состав подписантов и полномочия.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.103—2013"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.1/supervision",
+      "clause": "6.1",
+      "requirement": "Согласование с надзорными органами требуется по вопросам их компетенции, если они не входят в комиссию; необходимость других заинтересованных адресатов определяет разработчик по согласованию с ними.",
+      "condition": "Есть соответствующие требования/органы и применён комиссионный порядок.",
+      "manual_check": "Подтвердить компетенцию, состав комиссии и маршрут согласования.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.2/no-commission",
+      "clause": "6.2",
+      "requirement": "Без приёмочной комиссии комплект КД с ТУ направляют заказчику; применимые надзорные согласования также выполняют.",
+      "condition": "Решение о постановке принимается без приёмочной комиссии.",
+      "manual_check": "Предъявить решение и комплект согласований с учётом 6.3.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.2/route",
+      "clause": "6.2",
+      "requirement": "Нужность других организаций определяет разработчик по согласованию с заказчиком; документы рассылают одновременно.",
+      "condition": "Применён порядок без приёмочной комиссии.",
+      "manual_check": "Проверить маршрут и даты рассылки.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.3/reference-exception",
+      "clause": "6.3",
+      "requirement": "Допускается не согласовывать с надзорными органами ТУ, использующие ссылки на установленные стандарты/правила по безопасности и экологии.",
+      "condition": "Выполнены условия ссылочного исключения и подтверждена его применимость.",
+      "manual_check": "Проверить содержание ссылок и достаточность основания; автоматически не отменять согласования.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "6.4/installation",
+      "clause": "6.4",
+      "requirement": "Для комплектно поставляемого комплекса дополнительно согласуют требования компетенции монтажной организации, если они не были согласованы ранее.",
+      "condition": "Вид изделия — комплекс, поставка комплектная и есть монтаж на месте эксплуатации.",
+      "manual_check": "Подтвердить вид изделия, монтажную организацию и ранее выполненные согласования.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.5/deadline",
+      "clause": "6.5",
+      "requirement": "Рассмотрение направленного комплекта КД с ТУ ограничено одним месяцем с поступления в организацию.",
+      "condition": "",
+      "manual_check": "Проверить даты получения и рассмотрения по журналам/переписке.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.6/approval",
+      "clause": "6.6",
+      "requirement": "Согласование оформляют подписью руководителя/заместителя согласующей организации под грифом либо отдельным актом/письмом/протоколом; у грифа указывают номер и дату такого документа.",
+      "condition": "",
+      "manual_check": "Сверить полномочия подписанта, фактические подписи, даты, номера и внешние документы.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.6/qualified",
+      "clause": "6.6",
+      "requirement": "Формулировка о согласовании с замечаниями недопустима.",
+      "condition": "",
+      "manual_check": "Проверить реальные грифы/документы согласования; цитату запрета в обычном тексте не считать самим грифом.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.7/initiative",
+      "clause": "6.7",
+      "requirement": "При инициативной разработке необходимость согласования с потребителем определяет разработчик.",
+      "condition": "Разработка инициативная.",
+      "manual_check": "Предъявить решение разработчика и выбранный маршрут.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.8/changes",
+      "clause": "6.8",
+      "requirement": "Изменения оформляют по правилам изменения КД и согласуют в установленном порядке.",
+      "condition": "Выпускается изменение ТУ.",
+      "manual_check": "Проверить держателя, извещение, маршрут и регистрацию изменений.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.503—2013"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.8/limited-route",
+      "clause": "6.8",
+      "requirement": "Изменение допустимо согласовать только с заказчиком, если не затронуты требования ранее согласовавших организаций.",
+      "condition": "Подтверждено, что требования других согласующих организаций не меняются.",
+      "manual_check": "Проверить матрицу затронутых требований и основание сокращённого маршрута.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "permission"
+    },
+    {
+      "id": "6.9/authority",
+      "clause": "6.9",
+      "requirement": "ТУ в составе КД утверждает разработчик либо орган, предусмотренный законодательством.",
+      "condition": "",
+      "manual_check": "Подтвердить утверждающий орган и полномочия.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.10/holder",
+      "clause": "6.10",
+      "requirement": "Изменения ТУ разрабатывает и оформляет держатель подлинника.",
+      "condition": "Выпускается изменение ТУ.",
+      "manual_check": "Подтвердить держателя подлинника; сохранение копии приложением не наделяет полномочиями.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.11/signature",
+      "clause": "6.11",
+      "requirement": "Утверждение комплекта КД с ТУ/изменением оформляют подписью руководителя или заместителя разработчика под грифом на титульном листе.",
+      "condition": "",
+      "manual_check": "Проверить титульный лист, полномочия и реальную подпись; приложение их не создаёт.",
+      "automation": "manual",
+      "dependencies": [
+        "ГОСТ 2.105—95"
+      ],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.12/duration",
+      "clause": "6.12",
+      "requirement": "Как правило, ТУ утверждают без ограничения срока; при необходимости ограничение согласуют с заказчиком.",
+      "condition": "",
+      "manual_check": "Проверить решение о сроке действия и согласование ограничения.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "recommendation"
+    },
+    {
+      "id": "6.13/defense",
+      "clause": "6.13",
+      "requirement": "Для заказов Министерства обороны согласование и утверждение подчиняются соответствующим НД.",
+      "condition": "Подтверждён заказ Министерства обороны.",
+      "manual_check": "Получить соответствующие НД и подтверждения маршрута; не выводить категорию заказа по тематике документа.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    },
+    {
+      "id": "6.14/department",
+      "clause": "6.14",
+      "requirement": "Для отдельных изделий согласование/утверждение министерствами или ведомствами выполняют, если это предусмотрено правовыми НД.",
+      "condition": "Есть соответствующее правовое основание для вида изделия.",
+      "manual_check": "Подтвердить действующее основание, орган и выполненную процедуру.",
+      "automation": "manual",
+      "dependencies": [],
+      "form": "any",
+      "modality": "requirement"
+    }
+  ]
+}

@@ -188,7 +188,7 @@ def test_document_approval_gets_exact_candidate_coverage_and_does_not_publish_on
     original=tmp_path/'document.docx';raw=source_docx(original)
     monkeypatch.setattr(file_tools,'WORKSPACE',tmp_path/'chats')
     monkeypatch.setattr(document_jobs,'prepare_document',lambda *a:candidate(raw))
-    monkeypatch.setattr(document_jobs,'build_report',lambda data,kind:build_report(data,kind,tmp_path/'library'))
+    monkeypatch.setattr(document_jobs,'build_report',lambda data,kind,**kwargs:build_report(data,kind,tmp_path/'library',**kwargs))
     def reject(proposal: document_jobs.DocumentProposal) -> bool:
         assert proposal.coverage is not None
         assert proposal.coverage.document_kind=='technical_specifications'
@@ -210,7 +210,7 @@ def test_gost_type_selection_rejects_stale_chat_and_passes_explicit_kind() -> No
     dialog=app.page.open.call_args.args[0]
     dropdown=dialog.content.controls[0];dropdown.value='technical_specifications'
     dialog.actions[1].on_click(None)
-    app._handle_send.assert_called_once_with(None,document_name='test.docx',document_kind='technical_specifications')
+    app._handle_send.assert_called_once_with(None,document_name='test.docx',document_kind='technical_specifications',document_form='unconfirmed')
     app._handle_send.reset_mock();app._handle_gost_click(None)
     dialog=app.page.open.call_args.args[0];app.chat_manager.current_chat_id='b'
     dialog.actions[1].on_click(None)

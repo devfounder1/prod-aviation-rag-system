@@ -273,7 +273,7 @@ def test_desktop_gost_action_captures_one_document_without_changing_agent_switch
     dialog = app.page.open.call_args.args[0]
     app._handle_send.assert_not_called()
     dialog.actions[1].on_click(None)
-    app._handle_send.assert_called_once_with(None, document_name='input.doc', document_kind='unconfirmed')
+    app._handle_send.assert_called_once_with(None, document_name='input.doc', document_kind='unconfirmed', document_form='unconfirmed')
     assert not app.agent_mode
     app._pending_attachments.append({'name': 'other.docx', 'path': '/explicit/other.docx'})
     app.gost_button.on_click(None)

@@ -621,19 +621,35 @@ class AviationRAGApp:
                            options=[ft.dropdown.Option('unconfirmed', 'Не определён — требуется проверка'),
                                     ft.dropdown.Option('technical_specifications', 'Технические условия')], width=490)
 
+        form = ft.Dropdown(label='Представление ТУ', value='unconfirmed', disabled=True,
+                           options=[ft.dropdown.Option('unconfirmed', 'Не подтверждено'),
+                                    ft.dropdown.Option('print_framed', 'Макет для печати с рамками и штампами'),
+                                    ft.dropdown.Option('print_frameless', 'Бумажный подлинник без рамок'),
+                                    ft.dropdown.Option('electronic', 'Электронный конструкторский документ')],width=490)
+
+        def select_kind(event: Any) -> None:
+            form.disabled = kind.value != 'technical_specifications'
+            if form.disabled:
+                form.value = 'unconfirmed'
+            self.page.update()
+
+        kind.on_change = select_kind
+
         def start(event: Any) -> None:
             self.page.close(dialog)
             if (self.is_processing or self.chat_manager.current_chat_id != chat_id or
                     getattr(self, '_pending_attachments', []) != expected):
                 self._show_toast('Чат или вложения изменились; выберите документ заново.')
                 return
-            self._handle_send(event, document_name=documents[0]['name'], document_kind=kind.value or 'unconfirmed')
+            self._handle_send(event, document_name=documents[0]['name'], document_kind=kind.value or 'unconfirmed',
+                              document_form=(form.value or 'unconfirmed') if kind.value=='technical_specifications' else 'unconfirmed')
 
         dialog = ft.AlertDialog(modal=True, title=ft.Text('Область проверки ГОСТ'),
-            content=ft.Column([kind, ft.Text(
+            content=ft.Column([kind, form, ft.Text(
                 'Оформление использует проверенный профиль Р 2.105 / Р 2.104. '
                 'Во вкладке «Покрытие ГОСТ» будут показаны источники и непроверенные требования. '
-                'Наличие источника ГОСТ 2.114 и ограничения проверки содержания ТУ указаны в отчёте.', size=13)],
+                'Для ТУ показан отдельный перечень ГОСТ 2.114: что наблюдает код и что проверяет человек. '
+                'DOCX сам по себе не означает формальный электронный КД.', size=13)],
                 tight=True, width=510),
             actions=[ft.TextButton('Отмена',on_click=lambda _: self.page.close(dialog)),
                      ft.ElevatedButton('Подготовить документ',on_click=start)])
@@ -695,7 +711,7 @@ class AviationRAGApp:
     def _process(self, user_input: str, attachments: list[dict[str, str]],
                  agent_mode: bool, job: RequestJob, model_name: str,
                  history: list[dict[str, Any]], document_name: str | None = None,
-                 document_kind: str = 'unconfirmed') -> None:
+                 document_kind: str = 'unconfirmed', document_form: str = 'unconfirmed') -> None:
         try:
             if not self._ui_dispatch.active or not self._jobs.is_current(job):
                 return
@@ -714,7 +730,7 @@ class AviationRAGApp:
 
                 outcome = create_document(
                     job.chat_id, source, approve_document, job.token,
-                    lambda event: self._queue_activity(job, event), document_kind=document_kind)
+                    lambda event: self._queue_activity(job, event), document_kind=document_kind, document_form=document_form)
                 if not job.token.get('cancelled'):
                     self._queue_job_ui(job, self._complete_job, job, outcome.render(), [])
                 return
@@ -1345,7 +1361,8 @@ class AviationRAGApp:
         self.page.update()
         self.messages_column.scroll_to(offset=-1, duration=300)
 
-    def _handle_send(self, e, document_name: str | None = None, document_kind: str = 'unconfirmed'):
+    def _handle_send(self, e: Any, document_name: str | None = None, document_kind: str = 'unconfirmed',
+                     document_form: str = 'unconfirmed') -> None:
         text = (f'Оформить документ «{document_name}» по ГОСТ Р 2.105-2019 / Р 2.104-2023'
                 if document_name is not None else self.input_field.value.strip())
         if not text or self.is_processing:
@@ -1385,7 +1402,7 @@ class AviationRAGApp:
         threading.Thread(
             target=self._process,
             args=(text, pending_attachments, self.agent_mode, job, self.current_model_local, history,
-                  document_name, document_kind),
+                  document_name, document_kind, document_form),
             daemon=True
         ).start()
 

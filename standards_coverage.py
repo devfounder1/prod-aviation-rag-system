@@ -10,10 +10,14 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel
 
 import standards_library as library
 from standard_profiles import load_profile
 from tu_validation import DocumentCheck, TU_SOURCE_SHA256, validate_tu
+from tu_requirements import TUReview, FORMS, build_review
 
 ROOT = Path(__file__).resolve().parent
 
@@ -69,6 +73,8 @@ class CoverageReport:
     document_checks: tuple[DocumentCheck, ...] = ()
     full_conformance_checked: bool = False
     semantic_catalog_complete: bool = False
+    document_form: str = 'unconfirmed'
+    tu_review: TUReview | None = None
 
     def render(self, details: bool = True) -> str:
         available = sum(s.archived for s in self.sources)
@@ -79,10 +85,10 @@ class CoverageReport:
                  f'Вид документа: {kind}', f'Профиль: {self.profile_id}',
                  f'SHA-256 проверяемого DOCX: {self.candidate_sha256}',
                  f'Полные PDF в локальной библиотеке: {available}/{len(self.sources)}; страниц: {pages}.',
-                 f'Разобранных записей требований: {len(self.requirements)}; в рецепте оформления: {selected}.',
+                 f'Записей исходных реестров оформления: {len(self.requirements)}; в рецепте оформления: {selected}.',
                  f'Фрагментов полного каталога, требующих предметного разбора: {len(self.candidates)}.',
                  'Автоматических нормативных заключений «выполнено»: 0.',
-                 'Каталог требований ещё не полностью разобран. Процент соответствия не вычисляется.',
+                 'Общая библиотека требований по всем ГОСТам ещё не полностью разобрана. Процент соответствия не вычисляется.',
                  'Фрагмент с номером пункта — кандидат для разбора; таблицы, сноски и продолжения требуют проверки.',
                  'Визуальные примеры сохранены в исходных PDF; их геометрия автоматически не интерпретирована.',
                  '\nПробелы и зависимости:', *self.blockers, '\nИсточники:']
@@ -104,19 +110,26 @@ class CoverageReport:
                              f'{row.rule_id}: {row.requirement}\n'
                              f'Статус: {row.status}. {row.reason}'+
                              (f' Условия/исключения: {row.exceptions}' if row.exceptions else ''))
+        if self.tu_review is not None:
+            lines += ['\n'+self.tu_review.render(details)]
         return '\n'.join(lines)
 
 
 def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
-                 corpus_root: Path = library.LIBRARY, standards_root: Path = ROOT/'standards') -> CoverageReport:
+                 corpus_root: Path = library.LIBRARY, standards_root: Path = ROOT/'standards',
+                 *, document_form: str = 'unconfirmed') -> CoverageReport:
     if document_kind not in {'unconfirmed', 'technical_specifications'}:
         raise ValueError('Неизвестный вид документа; нужен отдельный проверенный профиль')
+    if document_form not in FORMS or (document_kind!='technical_specifications' and document_form!='unconfirmed'):
+        raise ValueError('Представление ТУ требует подтверждённого вида документа')
     profile = load_profile(standards_root)
     recipe = json.loads((standards_root/'profiles/eskd_text.json').read_text())
     chosen = {s['sha256']: frozenset(s['rule_ids']) for s in recipe['sources']}
     records = library.sources(standards_root/'library.json')
     inventory: list[SourceCoverage] = []
     document_checks: tuple[DocumentCheck, ...] = ()
+    tu_corpus: library.Corpus | None = None
+    tu_review: TUReview | None = None
     candidates: list[CandidateCoverage] = []
     blockers = ['Применимость каждого требования к этому документу ещё не подтверждена.',
                 'Автоматическое форматирование не заменяет проверку результата по пунктам стандарта.',
@@ -130,11 +143,15 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
             corpus = None
         # Corruption/version mismatch is an error, never silently an absent source.
         archived = corpus is not None
+        if source.source_id=='gost-2-114-2016' and source.sha256==TU_SOURCE_SHA256:
+            tu_corpus=corpus
         if corpus:
             candidates.extend(CandidateCoverage(source.source_id,source.sha256,u.page,u.unit_id,u.clause_candidate)
                               for u in corpus.units)
         note = ('Выбран прежним рецептом; полная применимость требует проверки.' if source.sha256 in chosen else
                 'Не включён в автоматическое оформление; требуется разбор применимости и реализация.')
+        if source.source_id=='gost-2-114-2016' and source.sha256==TU_SOURCE_SHA256:
+            note += ' Есть отдельный предметный перечень ГОСТ 2.114; он не изменяет рецепт и не подтверждает выполнение требований.'
         if source.source_id == 'gost-2-601-2013':
             note += (' Это отдельная редакция: полученный ГОСТ Р 2.610-2019 ссылается также на '
                      'ГОСТ Р 2.601-2019. Автоматическая подмена на ГОСТ 2.601-2013 не разрешена.')
@@ -155,6 +172,8 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
         else:
             blockers.append('Нет проверенной локальной копии ГОСТ 2.114 «Технические условия»: '
                             'состав и содержание ТУ по нему не проверены.')
+        if tu and tu.sha256==TU_SOURCE_SHA256:
+            tu_review=build_review(candidate,document_form,tu_corpus,document_checks,standards_root)
         blockers.append('Другие виды документов не применяются к ТУ автоматически.')
     requirements: list[RequirementCoverage] = []
     for name in profile.selected_files:
@@ -176,20 +195,28 @@ def build_report(candidate: bytes, document_kind: str = 'unconfirmed',
                 'Есть преобразование в рецепте; нормативная проверка результата ещё не реализована.' if selected else
                 'Запись есть в реестре, но этот рецепт не выполняет её проверку или исправление.'))
     return CoverageReport(hashlib.sha256(candidate).hexdigest(),document_kind,profile.profile_id,
-                          tuple(inventory),tuple(requirements),tuple(blockers),tuple(candidates),document_checks)
+                          tuple(inventory),tuple(requirements),tuple(blockers),tuple(candidates),document_checks,
+                          document_form=document_form,tu_review=tu_review)
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value,BaseModel):
+        return value.model_dump(mode='json')
+    raise TypeError('Неизвестный тип отчёта')
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('document', type=Path)
     parser.add_argument('--kind', choices=['unconfirmed','technical_specifications'], default='unconfirmed')
+    parser.add_argument('--form', choices=sorted(FORMS),default='unconfirmed')
     parser.add_argument('--library', type=Path, default=library.LIBRARY)
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    report = build_report(args.document.read_bytes(), args.kind, args.library)
+    report = build_report(args.document.read_bytes(), args.kind, args.library,document_form=args.form)
     if args.output:
         with args.output.open('x',encoding='utf-8') as stream:
-            json.dump(asdict(report),stream,ensure_ascii=False,indent=2)
+            json.dump(asdict(report),stream,ensure_ascii=False,indent=2,default=_json_default)
     print(report.render())
 
 

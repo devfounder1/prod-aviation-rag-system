@@ -41,11 +41,14 @@ def create_document(chat_id: str, attachment: dict[str, str],
                     approve: Callable[[DocumentProposal], bool],
                     cancel: dict[str, bool] | None = None,
                     on_activity: Callable[[ActivityEvent], None] | None = None,
-                    document_kind: str = 'unconfirmed') -> DocumentOutcome:
+                    document_kind: str = 'unconfirmed', document_form: str = 'unconfirmed') -> DocumentOutcome:
     def active() -> None:
         if cancel and cancel.get('cancelled'):
             raise RuntimeError('Обработка документа отменена')
 
+    from tu_requirements import FORMS
+    if document_form not in FORMS or (document_kind!='technical_specifications' and document_form!='unconfirmed'):
+        raise ValueError('Представление ТУ требует подтверждённого вида документа')
     active()
     root = workspace_for_chat(chat_id).resolve()
     original = Path(attachment['path']).resolve(strict=True)
@@ -64,7 +67,7 @@ def create_document(chat_id: str, attachment: dict[str, str],
     path = root / 'results' / (stem + '_ГОСТ_' + uuid.uuid4().hex[:8] + '.docx')
     if not path.resolve().is_relative_to(root):
         raise ValueError('Папка результатов вышла за рабочую папку чата')
-    coverage = build_report(candidate.docx, document_kind)
+    coverage = build_report(candidate.docx, document_kind,document_form=document_form)
     active()
     proposal = DocumentProposal(str(path), candidate, coverage)
     if on_activity:

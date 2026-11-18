@@ -896,3 +896,64 @@ Strict mypy passes all 44 hardened modules. Read-only doctor is ready with
 intact SQLite/Chroma and local Ollama; deterministic retrieval recall@1 is 1.0.
 Private QA files/receipts stay in ignored eval-results/unit-spacing-2026-11-17/.
 The unrelated user change in hybrid_retriever.py remains outside the commit.
+
+### 2026-11-18 — Supplied ГОСТ 2.114 TU checklist and request-owned form
+
+Read the complete supplied 15-page ГОСТ 2.114-2016 edition (December 2018
+reprint; 2019 publication details), including conditions, notes and dependencies.
+Add a separate, non-executable review registry and human-readable checklist:
+88 numbered positions in sections 4–6, including seven structural headings,
+map to 148 review items; sections 1–3 and all source pages are accounted for
+separately. Every normative paragraph has an item; split the substantial lists
+into concrete review subjects. Retain exact source/page-text hashes and source
+span boundaries/hashes, including continuations across pages. `tu_requirements`
+verifies the full paragraph/span inventory against the existing immutable archive.
+This is an evidence navigation check, not semantic/conformity proof or a count
+of fulfilled requirements. Keep the wider semantic catalog explicitly incomplete.
+Record the source's dated references/footnote editions; do not silently substitute
+new supplied standards or claim current legal applicability.
+
+148 items distinguish requirement/recommendation/permission, explicit conditions,
+paper/electronic alternatives, referenced documents, available limited code
+assistance, candidate observations and specific human checks. Ten items relate
+to existing limited observations/formatting capabilities; 138 have no specialized
+automation. All normative outcomes remain pending human judgment. Do not infer
+absence of safety content from a missing heading, invent guarantees/technical
+norms or generate decisions/signatures. Keep 5.1.2 developer/TZ exceptions and
+5.7.16 external methods explicit. Existing dimensions/headings/reference checks
+remain scoped observations, not complete engineering or approval validation.
+
+Integrate the separate review into CoverageReport and exact-candidate approval.
+Add JSON serialization for typed review models and a --form CLI option. Preserve
+the 35 original registry entries/17 selected formatting entries separately;
+no formatting recipe, renderer code, Docker image, Chroma or model is changed.
+Capture document_form per request: unconfirmed by default, print_framed,
+print_frameless or electronic. Enable the form selector only for explicitly
+selected TU kind. Pass it through the GUI worker/jobs/coverage/approval, reject
+invalid combinations before conversion and stale chat/attachment dialogs.
+The selector scopes the checklist only; it does not create formal electronic KD
+or remove artwork. User explicitly chose a print layout with frames/stamps for
+the current private TU; future requests retain their own default/selection.
+
+Apply the read-only review to the previous published private TU SHA-256
+b292617c0c9e1d7b71cf3670864757bbb9b108e333430c7e1a03316a84f7217f.
+The archive inventory matches; six rows concern unselected form alternatives.
+Publish a new report in that chat's results with verified FileReceipt/readback
+and output_files visibility. Prior DOCX/source/originals remain unchanged.
+Priorities: obtain referenced OTU/main KD and TZ/developer composition decision;
+check ordering example and equipment substitution/arbitration details; validate
+content, metrology and actual approvals manually. The visible PDF's absence of
+the arbitration term is only a navigation finding, not proof of violation.
+No new DOCX render/native GUI interaction pass is claimed in this read-only stage.
+Private findings, CLI JSON, evidence and receipts stay in ignored
+`eval-results/tu-2114-review-2026-11-18/` and chat results; never commit them.
+
+Validation: 424 application tests pass, 11 optional tests skipped, with the
+existing PyPDF2 deprecation warning. The TU review module's 15 tests also pass
+with BUTUZ_STANDARDS_LIVE=1, including exact local archive verification, source
+changes/omitted-clause rejection, form-scoped evidence and exact-byte binding.
+Synthetic tests cover malicious/invalid catalog claims, conditions, missing
+sources, typed JSON, GUI callbacks, stale dialogs, and rejection without
+publication. Actual CLI JSON exports all 148 items for the private candidate.
+Strict mypy passes all 45 hardened modules and desktop syntax compilation passes.
+Read-only doctor is ready/intact; deterministic retrieval recall@1 is 1.0.
