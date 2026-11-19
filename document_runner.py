@@ -195,7 +195,7 @@ def runtime_fingerprint() -> str:
 
 
 def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
-                     timeout: float = 180) -> DocumentCandidate:
+                     timeout: float = 180, *, render_only: bool = False) -> DocumentCandidate:
     if source.is_symlink() or not source.is_file() or source.suffix.lower() not in {'.doc', '.docx'}:
         raise ValueError('Выберите обычный файл DOC или DOCX. Для PDF этап восстановления структуры ещё не подключён.')
     if not 0 < timeout <= 180:
@@ -207,6 +207,8 @@ def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
     if source.suffix.lower() == '.docx':
         from document_inspection import inspect_docx
         inspect_docx(source)
+    elif render_only:
+        raise ValueError('Без повторного оформления отображается только DOCX')
     if cancel and cancel.get('cancelled'):
         raise RuntimeError('Обработка документа отменена')
     docker = docker_command()
@@ -219,7 +221,7 @@ def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
     name = 'butuz-document-' + uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix='butuz-document-input-') as directory:
         staging = Path(directory); staging.chmod(0o755)
-        snapshot = staging / ('source' + source.suffix.lower()); snapshot.write_bytes(raw); snapshot.chmod(0o444)
+        snapshot = staging / (('render' if render_only else 'source') + source.suffix.lower()); snapshot.write_bytes(raw); snapshot.chmod(0o444)
         command = [*docker, 'run', '--name', name, '--pull=never', '--network=none',
                    '--read-only', '--cap-drop=ALL', '--security-opt=no-new-privileges',
                    '--user=65534:65534', '--cpus=2', '--memory=1536m', '--memory-swap=1536m',
@@ -238,6 +240,8 @@ def prepare_document(source: Path, cancel: dict[str, bool] | None = None,
                                      'tar', '-C', '/work/out', '-cf', '-', '.'], MAX_EXPORT)
             export.wait(20, cancel)
             candidate = decode_export(bytes(export.buffers[0]))
+            if render_only and candidate.docx != raw:
+                raise ValueError('Рендер изменил утверждаемую копию DOCX')
             if candidate.runtime_fingerprint != expected_runtime:
                 raise RuntimeError('Обработчик документов устарел. Пересоберите butuz-documents:local по README; файл не сохранён.')
             from tu_validation import verify_preview

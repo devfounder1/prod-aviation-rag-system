@@ -42,6 +42,7 @@ def main() -> None:
     if len(inputs) != 1 or inputs[0].suffix not in {'.doc', '.docx'}:
         raise ValueError('Нужен один документ DOC или DOCX')
     source = Path('/work') / ('source' + inputs[0].suffix)
+    render_only = inputs[0].name == 'render.docx'
     shutil.copyfile(inputs[0], source)
     original_format = source.suffix
     if source.suffix == '.doc':
@@ -50,20 +51,30 @@ def main() -> None:
     before = inspect_docx(source)
     out = Path('/work/out'); out.mkdir()
     artifact = out / 'document.docx'
-    report = asdict(format_docx(source, artifact))
+    if render_only:
+        shutil.copyfile(source, artifact)
+        report = {'profile':'Просмотр точных байтов DOCX без повторного оформления',
+                  'changes':['Выполнен только изолированный рендер; содержимое DOCX не изменено.'],
+                  'warnings':['Вёрстка и реквизиты требуют проверки; соответствие всем ГОСТам не устанавливается.'],
+                  'body_text_preserved':True,'full_conformance_checked':False}
+    else:
+        report = asdict(format_docx(source, artifact))
     report['warnings'] = list(report['warnings'])
-    merged, continuations, skipped = paginate_tables(artifact, convert)
-    report['changes'] = list(report['changes']) + [
+    merged, continuations, skipped = (0,0,0) if render_only else paginate_tables(artifact, convert)
+    report['changes'] = list(report['changes']) + ([] if render_only else [
         f'Объединены ручные части таблиц с одинаковой шапкой: {merged}. '
         f'После расчёта страниц добавлены подписи продолжения: {continuations}. '
         'Значения и нумерация строк сохранены; повторные шапки пересобраны.'
-    ]
+    ])
     if skipped:
         report['warnings'].append(f'Постраничный расчёт не применён к сложным или неоднозначным таблицам: {skipped}. Проверьте их переносы вручную.')
-    report['warnings'].append('При дальнейших правках текста или ширины столбцов в Word проверьте переносы заново: части таблиц рассчитаны по текущей вёрстке.')
+    if not render_only:
+        report['warnings'].append('При дальнейших правках текста или ширины столбцов в Word проверьте переносы заново: части таблиц рассчитаны по текущей вёрстке.')
     pdf = convert(artifact, out, 'pdf:writer_pdf_Export')
     unresolved = 0
     for _ in range(3):
+        if render_only:
+            break
         changed, unresolved = refresh_pagination(artifact, pdf)
         if not changed:
             break
@@ -82,7 +93,8 @@ def main() -> None:
     for name in runtime_files():
         digest.update(name.encode()); digest.update((Path('/opt/butuz')/name).read_bytes())
     report['runtime_fingerprint'] = digest.hexdigest()
-    report['changes'] = list(report['changes']) + [f'Предпросмотр подготовлен: {pages} страниц. Ссылки оглавления сверены: без совпадения — {unresolved}.']
+    report['changes'] = list(report['changes']) + [f'Предпросмотр подготовлен: {pages} страниц.' +
+        ('' if render_only else f' Ссылки оглавления сверены: без совпадения — {unresolved}.')]
     report['legacy_import'] = original_format == '.doc'
     report['input_features'] = {'sections': len(before.sections), 'tables': before.tables,
                                 'textboxes': before.textboxes, 'images': before.image_parts,

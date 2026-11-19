@@ -1085,3 +1085,42 @@ list wrapping, numeric-unit wrapping and complete export. Strict mypy passes
 No native GUI/Word interaction or full GOST conformity is claimed. Update the
 source application order to distinguish implemented operations, observations,
 remaining engineering review and the unprepared exact-geometry template.
+
+## Explicit R 2.104 frame replacement — 2026-11-19
+
+Added a separate opt-in frame_templates builder for portrait A4 print copies,
+using forms 2/2a from the supplied pinned R 2.104-2023, B.2/B.3 (PDF 16–17).
+Editable page-anchored vectors use a 185×287 mm frame at 20/5 mm, 185×40/15 mm
+main blocks, the 2023 version columns, and rotated registration labels in native
+cells. Neutral blank_template() returns a two-page DOCX with live page fields.
+Conditional requisites are not fabricated. This is not an automatic GUI/default
+recipe change or full standards conformity assessment.
+
+Replacement requires the exact DOCX hash and exact reviewed header/footer hashes.
+New active parts are added and relationships rebound; all original furniture,
+media, OLE and body XML remain byte-identical. Signature pictures are copied only
+with reviewed row mappings. Non-A4, stale/ambiguous plans, package signatures and
+missing referenced assets fail closed. The separate render_only container path
+skips formatting and pagination writes and checks exact exported DOCX bytes.
+Existing ordinary formatting and approval safeguards remain in force.
+
+Private TU QA: all 24 pages and both blank-template pages visually reviewed.
+All 30 unchanged original parts, including all 10 media/OLE parts, are byte-equal;
+only content types and document relationship targets differ among old parts.
+Body XML, technical prose, numbering, tables, TOC, 1.5 spacing and the diagram
+are preserved. Independently compared body glyphs/coordinates on all 24 PDF pages;
+page fields 2–24 and four continuation captions verified. PDF frame width measures
+184.979 mm, height 286.985 mm, origin 19.985/4.992 mm, main blocks 39.970/14.975 mm
+(export quantization, not normative tolerances). Original DOC hash rechecked.
+Published new TU, blank template and review under existing chat results/ with
+verified FileReceipts. No private document/standard/QA artifacts enter Git.
+
+Validation: 461 tests passed, 14 optional tests skipped; six frame-template tests
+passed with the prepared image, including two real exports. Existing live export
+checks also passed. Strict mypy passed all 51 hardened modules; deterministic RAG
+recall@1=1.0; read-only doctor ready. Image explicitly refreshed offline from the
+existing prepared local base, no downloads or host converter fallback. Full GUI,
+Microsoft Word and physical print testing not performed. Liberation Sans and
+0.5/0.25 mm line choices, conditional fields and remaining engineering/organization
+checks are disclosed in the private review. Old table/diagram content was not
+redesigned by this frame-only operation.
