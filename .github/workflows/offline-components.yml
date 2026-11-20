@@ -1,0 +1,45 @@
+name: Prepare offline Windows components
+on:
+  push:
+    branches: [release]
+    paths: ['.github/workflows/offline-components.yml', 'packaging/windows/prepare_runtime.py']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Prepare full CPython and locked native Windows dependencies
+        run: uv run --no-project --python 3.12 python packaging/windows/prepare_runtime.py
+      - name: Upload runtime components without models or private documents
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-runtime-components
+          path: dist/windows-runtime-components/
+          compression-level: 1
+          retention-days: 7
+  linux-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the two Linux amd64 images from this source revision
+        run: |
+          mkdir -p dist/linux-images
+          docker build --platform linux/amd64 -t butuz-documents:local -f document_runtime/Dockerfile .
+          docker build --platform linux/amd64 -t butuz-sandbox:local -f sandbox/Dockerfile .
+          docker image inspect butuz-documents:local butuz-sandbox:local > dist/linux-images/image-build.json
+          docker save -o dist/linux-images/butuz-documents.tar butuz-documents:local
+          docker save -o dist/linux-images/butuz-sandbox.tar butuz-sandbox:local
+          sha256sum dist/linux-images/*.tar > dist/linux-images/SHA256SUMS.txt
+      - name: Upload local images without private data
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-local-images
+          path: dist/linux-images/
+          compression-level: 1
+          retention-days: 7
