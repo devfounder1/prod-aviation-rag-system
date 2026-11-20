@@ -49,9 +49,12 @@ def main() -> None:
         if metadata['Architecture']!='amd64' or metadata['Os']!='linux':raise ValueError('Wrong delivered image platform')
         command=['docker','run','--rm','--pull=never','--platform','linux/amd64','--network=none',
                  '--read-only','--user','65534:65534','--cap-drop=ALL','--security-opt','no-new-privileges',
-                 '--cpus','1','--memory','512m','--pids-limit','64','--tmpfs','/tmp:rw,size=192m',
-                 '--tmpfs','/work:rw,size=64m','-e','HOME=/tmp','--entrypoint','python',metadata['Id'],'-c',code]
-        result=subprocess.run(command,check=True,capture_output=True,text=True,timeout=65)
+                 '--cpus','1','--memory','512m','--pids-limit','64','--tmpfs','/tmp:rw,size=192m,mode=1777',
+                 '--tmpfs','/work:rw,size=64m,mode=1777','-e','HOME=/tmp','--entrypoint','python',metadata['Id'],'-c',code]
+        result=subprocess.run(command,capture_output=True,text=True,timeout=65)
+        if result.returncode:
+            print(result.stdout[-16000:]);print(result.stderr[-16000:],file=sys.stderr)
+            raise RuntimeError('Prepared image check failed: '+tag)
         report=json.loads(result.stdout.strip().splitlines()[-1])
         if report['kind']=='document' and report['runtime_fingerprint']!=runtime_fingerprint():
             raise ValueError('Document code fingerprint mismatch')
