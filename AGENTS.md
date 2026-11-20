@@ -65,6 +65,7 @@
 - Start Ollama if not already running: `ollama serve`; inspect installed models with `ollama list`. Do not pull models automatically.
 
 ## Release checks
+- Windows delivery uses `windows_entry.py` and `packaging/windows/`: prepare a fresh Windows x64 portable directory, never overwrite an installed user's data. Keep Python 3.12, exact-version local Flet, standalone Ollama, local model caches, licensed standards archives and Linux amd64 container images together. Runtime never downloads missing components. Windows Docker access probes only the two fixed local named pipes and requires a Linux engine; do not honor remote contexts or fall back to host execution. Keep CPU as the non-macOS embedding default unless explicitly configured otherwise. A source kit, compiled launcher or integrity manifest is not native offline GUI acceptance. Maintain the Russian DOCX/Markdown handbook and record actual platform checks before claiming Windows readiness.
 - The active delivery branch is **`release`**, exactly without a `codex/` prefix (explicit user preference). Do not recreate `codex/production-hardening`. Commit completed, reviewed stages and push them to `origin/release`; inspect staged paths and exclude private runtime data and unrelated user changes.
 - Run `uv run python doctor.py` for read-only local readiness checks.
 - Run `uv run python evaluate_rag.py` for deterministic retrieval CI and add `--live` only for local-model quality checks. Fixtures must be synthetic or explicitly cleared for publication.

@@ -4,6 +4,7 @@
 """
 
 import os
+import sys
 from pathlib import Path
 
 # Offline runtime policy applies even if the shell has tracing enabled.
@@ -51,7 +52,7 @@ class Settings(BaseSettings):
     # НАСТРОЙКИ EMBEDDINGS (ВЕКТОРИЗАЦИЯ)
     # ==========================================
     embedder_model_name: str = "intfloat/multilingual-e5-small"
-    embedder_device: str = "mps"
+    embedder_device: str = "mps" if sys.platform == 'darwin' else "cpu"
     
     # ==========================================
     # НАСТРОЙКИ ПОИСКА

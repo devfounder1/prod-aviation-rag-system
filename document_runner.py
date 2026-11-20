@@ -17,7 +17,7 @@ import time
 from typing import BinaryIO
 import uuid
 
-from sandbox_runner import docker_command
+from sandbox_runner import docker_command, LOCAL_PROCESS_ENV
 
 IMAGE = 'butuz-documents:local'
 MAX_INPUT = 32 * 1024 * 1024
@@ -45,7 +45,7 @@ class BoundedProcess:
     """Drain both pipes; cancellation never closes a blocking pipe on the UI loop."""
 
     def __init__(self, command: list[str], limit: int) -> None:
-        env = {k: v for k, v in os.environ.items() if k in {'PATH', 'HOME', 'TMPDIR', 'SYSTEMROOT'}}
+        env = {k: v for k, v in os.environ.items() if k in LOCAL_PROCESS_ENV}
         self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         stdin=subprocess.DEVNULL, env=env)
         self.limit = limit

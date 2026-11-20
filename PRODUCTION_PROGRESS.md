@@ -1150,3 +1150,36 @@ partial completion, not a full R 2.105 clause inventory or conformity verdict.
 Validation: 465 tests passed, 14 optional skipped; strict mypy passed 52 hardened
 modules. New targeted checks cover candidate locations, bounded excerpts, hidden
 and style-hidden content, cell formulas and rejection of Cyrillic prose as math.
+
+## Windows x64 preparation and user handoff — 2026-11-20
+
+Added a fixed portable entry point, Windows x64 C# launcher source, PowerShell
+assembly/readiness tools, filtered source-kit ZIP builder and SHA-256 directory
+manifest. Assembly requires a complete Windows CPython 3.12 runtime, matching
+Flet client, standalone Ollama, local HF/Ollama weights, explicitly supplied
+standards archives and two Linux amd64 image tar files. Existing private data is
+excluded. A new output folder is mandatory. Mutable history, chat workspaces,
+settings and logs stay outside immutable hashes; archived standards stay hashed.
+The launcher preserves Unicode logs and starts from App regardless of shell CWD.
+
+Windows Docker discovery uses only fixed local named pipes and verifies the Linux
+engine. Retained Docker child environment now includes Windows system/profile/temp
+variables without forwarding proxies or Docker context overrides. Non-macOS
+embedding defaults to CPU; explicit configuration still takes precedence.
+
+The maintained Russian handbook is delivered as Markdown and editable DOCX:
+25 sections / 17 rendered pages covering daily workflows, model/memory estimates,
+file map, backup/migration, troubleshooting, preparation and disconnected GUI
+acceptance. All 17 pages visually reviewed using the prepared offline document
+container, exact-byte render_only path; no characters outside page bounds.
+No private TU or standard content is included in the public guide or source kit.
+
+Validation on macOS: 470 tests passed, 14 optional skipped, one existing PyPDF2
+deprecation warning; strict mypy passed all 53 hardened modules. Read-only doctor
+ready; deterministic retrieval recall@1=1.0. All 28 selected document/frame/sandbox
+tests passed with the real prepared local Docker images, including actual code,
+pytest, timeout/output isolation and document exports. Native Windows GUI acceptance and
+complete model/runtime assembly remain pending; this source handoff is not a
+ready-to-run offline Windows application. A release workflow separately parses
+PowerShell, compiles the launcher and tests portable logic on Windows; its artifact
+contains only the launcher and cannot run alone.

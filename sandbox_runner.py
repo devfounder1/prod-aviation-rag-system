@@ -12,10 +12,13 @@ import tempfile
 import threading
 import time
 import uuid
+import sys
 from typing import BinaryIO
 
 IMAGE = 'butuz-sandbox:local'
 LIMIT = 64_000
+LOCAL_PROCESS_ENV = {'PATH','HOME','TMPDIR','SYSTEMROOT','USERPROFILE','LOCALAPPDATA',
+                     'APPDATA','TEMP','TMP','WINDIR','PATHEXT','COMSPEC'}
 BOOT = '''import os, shutil, subprocess, sys
 for name in os.listdir('/input'):
     src, dst = '/input/' + name, '/work/' + name
@@ -47,6 +50,19 @@ class ExecutionResult:
 
 def docker_command() -> list[str]:
     binary = shutil.which('docker')
+    if sys.platform == 'win32':
+        if not binary:
+            raise RuntimeError('Docker CLI не найден. Подготовьте Docker Desktop с Linux containers.')
+        # Fixed local named pipes only: never honor a remote DOCKER_HOST/context.
+        for endpoint in ('npipe:////./pipe/dockerDesktopLinuxEngine', 'npipe:////./pipe/docker_engine'):
+            command=[binary,'--host',endpoint]
+            try:
+                probe=subprocess.run([*command,'info','--format','{{.OSType}}'],
+                    capture_output=True,text=True,timeout=5)
+                if probe.returncode==0 and probe.stdout.strip()=='linux':return command
+            except (OSError,subprocess.TimeoutExpired):
+                continue
+        raise RuntimeError('Локальный Docker Linux engine недоступен. Запустите Docker Desktop; выполнения на хосте не будет.')
     sockets = [Path.home() / '.docker/run/docker.sock', Path('/var/run/docker.sock')]
     endpoint = next((p for p in sockets if p.is_socket()), None)
     if not binary or endpoint is None:
@@ -98,7 +114,7 @@ def execute(root: Path, file_path: str, tests: bool = False,
         raise ValueError('Скрытые файлы не передаются в песочницу')
     docker = docker_command()
     env = {key: value for key, value in os.environ.items()
-           if key in {'PATH', 'HOME', 'TMPDIR', 'SYSTEMROOT'}}
+           if key in LOCAL_PROCESS_ENV}
     inspected = subprocess.run([*docker, 'image', 'inspect', IMAGE, '--format', '{{.Id}}'],
                                capture_output=True, text=True, timeout=10, env=env)
     image_id = inspected.stdout.strip()
