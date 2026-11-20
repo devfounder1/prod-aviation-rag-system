@@ -1248,3 +1248,14 @@ pytest exited 0 with one passing test. The first check harness lacked writable
 non-root tmpfs modes; corrected harness passed without changing delivered images.
 Bundle checks retain full Windows GUI acceptance as pending. The final ZIP and its
 readback validation are recorded separately after packaging.
+
+Final local delivery: `dist/ДЛЯ_ФЛЕШКИ/BUTUZIK-AI-Windows-x64-OFFLINE.zip`,
+25,747,739,593 bytes (about 25.75 GB / 23.98 GiB), built from b347b54.
+ZIP64 readback checked all 43,065 members/CRCs and all 39,995 immutable SHA-256
+entries, including selected model bytes and 12 registered PDF archives. Whole
+archive SHA-256 is b6e4546602668b6066586bc7071384d18cc94cf78a215eac81975c1e2163476b.
+The transfer folder also includes the exact reviewed Word manual, plain-text
+first-start steps and archive checksum. No chat databases or working user docs
+are present. Binary/private payload stays ignored and local; only preparation
+code and documentation are committed. Final Windows 10/11 disconnected GUI and
+target-specific system/driver setup remain pending and explicitly documented.
