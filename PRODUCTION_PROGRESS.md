@@ -1237,3 +1237,14 @@ Validation: 474 full tests passed, 14 optional skipped, one existing PyPDF2 warn
 Exact prepared image execution is checked separately in verify-offline-images.
 The local final archive is validated after actual assembly; this preparation
 record alone does not assert archive completion or Windows GUI acceptance.
+
+The complete local OFFLINE directory is now assembled (about 25.51 GiB / 43k
+files) with only the selected models, all four local HF caches and 12 validated
+edition archives. No chat SQLite, Chroma data or user working documents included.
+Native Windows runtime imports passed in 44722421779. Exact delivered image tars
+also passed real isolated export/pytest checks in 44740184192: formatted synthetic
+DOCX exported to a 26,677-byte PDF with matching runtime fingerprint, and sandbox
+pytest exited 0 with one passing test. The first check harness lacked writable
+non-root tmpfs modes; corrected harness passed without changing delivered images.
+Bundle checks retain full Windows GUI acceptance as pending. The final ZIP and its
+readback validation are recorded separately after packaging.

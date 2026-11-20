@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -127,6 +126,26 @@ def vendor_asset(resources: Path, release: str, name: str) -> dict[str, Any]:
             'sha256':actual,'publisher_digest_available':bool(asset.get('digest'))}
 
 
+def include_image_checks(resources: Path, output: Path) -> None:
+    from document_runner import runtime_fingerprint
+    with ZipFile(resources/'offline-image-checks.zip') as package:
+        if package.namelist()!=['offline-image-checks.json']:raise ValueError('Unknown image check artifact')
+        raw=package.read('offline-image-checks.json')
+    report=json.loads(raw)
+    rows=report.get('checks',[])
+    if len(rows)!=2 or {row.get('kind') for row in rows}!={'document','sandbox'}:
+        raise ValueError('Missing prepared image execution results')
+    for row in rows:
+        name='butuz-documents.tar' if row['kind']=='document' else 'butuz-sandbox.tar'
+        if row['tar_sha256']!=digest(output/'Images'/name):raise ValueError('Image check belongs to different bytes')
+        if row['kind']=='document':
+            if row['runtime_fingerprint']!=runtime_fingerprint() or row['exported_pdf_bytes']<1000:
+                raise ValueError('Missing exact document export verification')
+        elif row['pytest_exit_code']!=0 or '1 passed' not in row['pytest_output']:
+            raise ValueError('Missing actual sandbox pytest verification')
+    (output/'Provenance/offline-image-checks.json').write_bytes(raw)
+
+
 def assemble(resources: Path, output: Path, models: Path, hf: Path, library: Path) -> None:
     if output.exists() or output.with_suffix('.zip').exists():raise ValueError('Fresh delivery directory required')
     # Vendor download checks finish before any large local copying.
@@ -137,7 +156,7 @@ def assemble(resources: Path, output: Path, models: Path, hf: Path, library: Pat
     if len(installers)!=1:raise ValueError('Ambiguous WSL installer')
     assets.append(vendor_asset(resources,'wsl',installers[0]))
     artifacts=json.loads((resources/'component-artifacts.json').read_text())
-    for name in ('windows-runtime-components.zip','linux-amd64-images.zip'):
+    for name in ('windows-runtime-components.zip','linux-amd64-images.zip','offline-image-checks.zip'):
         expected=artifacts[name]['sha256']
         if not re.fullmatch('[a-f0-9]{64}',expected) or digest(resources/name)!=expected:
             raise ValueError('Prepared component artifact hash mismatch')
@@ -175,6 +194,7 @@ def assemble(resources: Path, output: Path, models: Path, hf: Path, library: Pat
         (output/'Flet/version.txt').write_text(metadata['packages']['flet-desktop'],encoding='utf-8')
         shutil.copytree(single_executable(tmp/'ollama','ollama.exe'),output/'Ollama')
         provenance=output/'Provenance';provenance.mkdir()
+        shutil.move(str(output/'source-manifest.json'),provenance/'source-manifest.json')
         shutil.copyfile(tmp/'runtime/runtime-build.json',provenance/'runtime-build.json')
         shutil.copyfile(tmp/'runtime/requirements.windows.txt',provenance/'requirements.windows.txt')
         shutil.copyfile(resources/'component-artifacts.json',provenance/'component-artifacts.json')
@@ -185,6 +205,7 @@ def assemble(resources: Path, output: Path, models: Path, hf: Path, library: Pat
             image_records.append(verify_image(source_image,tag))
             shutil.copyfile(source_image,output/'Images'/name)
         shutil.copyfile(tmp/'images/image-build.json',provenance/'image-build.json')
+        include_image_checks(resources,output)
     (output/'Models').mkdir()
     model_records=copy_ollama(models,output/'Models/ollama')
     copy_hf(hf,output/'Models/huggingface/hub')
