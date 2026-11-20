@@ -18,6 +18,8 @@
 
 - `frame_templates` is a separately authorized portrait-A4 print-template replacement, pinned to supplied Р 2.104-2023 Б.2/Б.3 (PDF 16–17). Rebind only exact-hash reviewed header/footer parts, retaining original parts, body XML, media and relationships. Native forms 2/2а use 185×40/15 mm blocks and 2023 version fields. Copy existing signatures/requisites only after reviewing row ownership; never invent missing values. This does not change the default recipe or GUI. `prepare_document(..., render_only=True)` renders exact DOCX bytes offline, skips formatting/pagination mutations and rejects changed exports. Review all pages before publishing a new copy with receipts. A blank template is not an electronic KD or conformity certificate.
 
+- `text_details` extends the source-pinned TU read-only review with bounded block/cell locators for note labels, malformed literal references, selected repeated-unit series, plain formula candidates, external references and abbreviations. Exclude hidden/style-hidden/unsupported/field/revision/drawing/TOC content; do not join tokens across omitted hidden runs. Candidates never authorize technical/punctuation/number rewrites or a conformity verdict. See docs/gost-r-2-105-remaining.md; no recipe selection/fingerprint changes.
+
 ## Stack & Environment
 - **GUI Framework:** Flet (Python, async/await UI loops).
 - **ML / AI Engine:** PyTorch; local LLM inference through **Ollama**, using its OpenAI-compatible endpoint `http://127.0.0.1:11434/v1`.

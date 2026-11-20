@@ -1124,3 +1124,29 @@ Microsoft Word and physical print testing not performed. Liberation Sans and
 0.5/0.25 mm line choices, conditional fields and remaining engineering/organization
 checks are disclosed in the private review. Old table/diagram content was not
 redesigned by this frame-only operation.
+
+## Remaining selected R 2.105 observations — 2026-11-20
+
+Added nine bounded read-only TU observations with exact body-block/cell locators:
+note labels and possible requirement words, malformed literal references, selected
+repeated-unit series, visible plain mathematical records in cells, where-colon,
+normative references, abbreviation candidates and registration-sheet heading.
+Existing source pin and candidate hash binding remain authoritative. Hidden text,
+unsupported/style-hidden chains, fields, revisions, drawings, TOC and hyperlinks
+are excluded. Hidden-run separators prevent token concatenation. Truncated evidence
+is disclosed. Findings never authorize rewriting references, punctuation, values,
+formula meanings or engineering requirements. No selected recipe/fingerprint change.
+
+On the private TU, found two singular note labels with colons, one damaged point
+reference, six repeated-mA sequences and four mathematical cells. External edition,
+abbreviation, approval and metrology questions remain open. An independently
+rendered copy changes only the product-name caps formatting on the title (8.9):
+all text characters and other ZIP parts are exact; only page 1 PNG differs from
+the fully reviewed 24-page frame copy. Four continuation captions and all 24 frame
+contours retained. Original DOC unchanged. New copy and candidate-bound detailed
+review saved in the existing chat results with verified FileReceipts. This is
+partial completion, not a full R 2.105 clause inventory or conformity verdict.
+
+Validation: 465 tests passed, 14 optional skipped; strict mypy passed 52 hardened
+modules. New targeted checks cover candidate locations, bounded excerpts, hidden
+and style-hidden content, cell formulas and rejection of Cyrillic prose as math.
