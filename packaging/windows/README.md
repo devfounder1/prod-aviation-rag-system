@@ -3,7 +3,8 @@
 This is an **assembly recipe**, not a claim that a Windows application was tested.
 The development host is macOS. Native GUI acceptance remains pending.
 
-1. Generate the maintained manual: bundled Python + tools/build_user_guide.py.
+1. Generate the maintained launch manual: bundled Python + tools/build_user_guide.py
+   creates docs/Инструкция для запуска BUTUZIK AI.docx from docs/launch-guide-ru.md.
 2. Build a source kit: `uv run python packaging/windows/make_source_kit.py dist/windows-source-kit`.
 3. On a Windows x64 preparation machine supply full portable CPython 3.12,
    matching full Flet Windows client, standalone Ollama, local HF/Ollama models,
@@ -11,7 +12,7 @@ The development host is macOS. Native GUI acceptance remains pending.
 4. Run Tools/Build-Windows.ps1 with the exact paths in the manual. The output
    must be NEW; no user-history or index directories are copied from the repository.
 5. Run Tools/Check-Offline.ps1, then ALL disconnected GUI acceptance cases in
-   docs/user-guide-ru.md section 24. Keep the complete runtime directory together.
+   docs/launch-guide-ru.md section 24. Keep the complete runtime directory together.
 
 The GitHub workflow Windows launcher and assembly scripts runs on relevant release
 pushes or manual dispatch. It parses

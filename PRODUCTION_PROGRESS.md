@@ -1192,3 +1192,23 @@ was corrected using absolute native paths (6c6f6bd). Linux full-check run
 44716012963 also passed tests, strict types and syntax checks. These CI jobs do
 not exercise the full model-bearing portable assembly or Windows GUI. Offline
 wheelhouse export now uses the supplied interpreter and disables Python downloads.
+
+## Beginner launch instructions — 2026-11-20
+
+Renamed and expanded the editable manual to «Инструкция для запуска BUTUZIK AI.docx».
+The maintained launch-guide-ru.md now has 24 sections separating source-kit
+preparation, first disconnected installation and daily use. It explains component
+roles, exact example folders, official downloads, ordinary/admin PowerShell,
+copyable short commands, expected results, model/cache/standard intake, image
+build/import, complete-directory assembly, flash transfer, synthetic project tests,
+file locations, backups and common errors. Missing private standards archives and
+the still-pending full Windows GUI acceptance remain explicit. Existing detailed
+user-guide-ru.md remains available as a reference.
+
+DOCX has a linked contents page and 24 validated internal navigation targets.
+All 23 final pages visually reviewed using canonical render_docx.py inside the
+prepared local document image, offline and without a host converter. Every command
+line was found intact on one rendered line; no characters outside page bounds.
+Source-kit tooling and README links now use the requested Russian filename and
+require the manual before packaging. Nine focused portable/release tests passed.
+No application behavior, original TU or standard archive changed in this stage.

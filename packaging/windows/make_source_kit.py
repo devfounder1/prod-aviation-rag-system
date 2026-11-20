@@ -9,6 +9,7 @@ import subprocess
 from zipfile import ZipFile,ZIP_DEFLATED
 
 ROOT=Path(__file__).resolve().parents[2]
+GUIDE_NAME='Инструкция для запуска BUTUZIK AI.docx'
 DIRECTORIES={'assets','standards','docs','ollama','sandbox','document_runtime','packaging','tools'}
 ROOT_FILES={'pyproject.toml','uv.lock','README.md','AGENTS.md','.env.example','LICENSE','LICENSE.md','.dockerignore'}
 DENY={'data','agent_workspace','eval-results','logs','.git','.venv','__pycache__','.pytest_cache','.mypy_cache'}
@@ -19,7 +20,7 @@ def allowed(name: str) -> bool:
     path=Path(name)
     if path.is_absolute() or '..' in path.parts or any(p in DENY for p in path.parts):return False
     if path.name.startswith('.') and name not in {'.env.example','.dockerignore'}:return False
-    if path.suffix=='.docx' and path.name!='BUTUZIK_AI_User_Guide_RU.docx':return False
+    if path.suffix=='.docx' and path.name!=GUIDE_NAME:return False
     return (len(path.parts)==1 and (name in ROOT_FILES or path.suffix=='.py') or
             len(path.parts)>1 and path.parts[0] in DIRECTORIES and (path.suffix in SUFFIXES or path.name in {'Dockerfile','Modelfile.agent'}))
 
@@ -35,8 +36,9 @@ def build(destination: Path) -> Path:
         target=destination/'App'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,target)
     shutil.copytree(ROOT/'packaging/windows',destination/'Tools',ignore=shutil.ignore_patterns('__pycache__'))
     shutil.copyfile(ROOT/'docs/windows-quickstart.md',destination/'README_FIRST.md')
-    guide=ROOT/'docs/BUTUZIK_AI_User_Guide_RU.docx'
-    if guide.exists():shutil.copyfile(guide,destination/guide.name)
+    guide=ROOT/'docs'/GUIDE_NAME
+    if not guide.is_file():raise ValueError('Launch guide missing; generate it before building the kit')
+    shutil.copyfile(guide,destination/guide.name)
     (destination/'ASSEMBLY_REQUIRED.txt').write_text('SOURCE AND ASSEMBLY KIT ONLY. No Windows executable/runtime/models included. Build on Windows x64 using Tools/Build-Windows.ps1; native disconnected acceptance is pending.\n',encoding='utf-8')
     records={p.relative_to(destination).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(destination.rglob('*')) if p.is_file()}
     commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()

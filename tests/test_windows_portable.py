@@ -48,9 +48,9 @@ def test_source_kit_filter_excludes_private_runtime_and_unapproved_docx() -> Non
     import importlib.util
     path=Path(__file__).resolve().parents[1]/'packaging/windows/make_source_kit.py'
     spec=importlib.util.spec_from_file_location('source_kit',path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-    for name in ('data/chats.sqlite3','agent_workspace/chats/private.py','.env','docs/private.docx','../leak.py','documents_ae/manual.pdf'):
+    for name in ('data/chats.sqlite3','agent_workspace/chats/private.py','.env','docs/private.docx','docs/BUTUZIK_AI_User_Guide_RU.docx','../leak.py','documents_ae/manual.pdf'):
         assert not module.allowed(name),name
-    for name in ('prilozhenie.py','.dockerignore','.env.example','standards/library.json','ollama/Modelfile.agent','tools/build_user_guide.py','docs/BUTUZIK_AI_User_Guide_RU.docx'):
+    for name in ('prilozhenie.py','.dockerignore','.env.example','standards/library.json','ollama/Modelfile.agent','tools/build_user_guide.py','docs/Инструкция для запуска BUTUZIK AI.docx'):
         assert module.allowed(name),name
 
 

@@ -598,7 +598,9 @@ BUTUZ_SANDBOX_LIVE=1 uv run pytest -q tests/test_sandbox_runner.py
 
 [Подробное руководство пользователя и администратора](docs/user-guide-ru.md)
 охватывает CHAT/SEARCH/AGENT, файлы, проекты, тесты, ГОСТ, резервные копии и ошибки.
-Редактируемая версия: [DOCX](docs/BUTUZIK_AI_User_Guide_RU.docx).
+Для первого развёртывания подготовлена пошаговая [инструкция запуска](docs/launch-guide-ru.md):
+что скачать, куда распаковать, как собрать полную папку и проверить её без сети.
+Редактируемая версия: [Инструкция для запуска BUTUZIK AI](<docs/Инструкция для запуска BUTUZIK AI.docx>).
 [Краткий запуск](docs/windows-quickstart.md) отличает исходный комплект от полной сборки.
 
 [Сценарии Windows](packaging/windows/README.md) готовят папку с EXE launcher,
