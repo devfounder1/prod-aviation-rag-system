@@ -1183,3 +1183,12 @@ complete model/runtime assembly remain pending; this source handoff is not a
 ready-to-run offline Windows application. A release workflow separately parses
 PowerShell, compiles the launcher and tests portable logic on Windows; its artifact
 contains only the launcher and cannot run alone.
+
+Native CI evidence: Windows Server 2025 x64 run 44716220712 successfully parsed
+both PowerShell scripts, compiled the x64 launcher and passed all five portable
+logic tests. The downloaded launcher ZIP digest matches GitHub's published
+SHA-256 and its executable is an AMD64 PE. The initial CI compiler path error
+was corrected using absolute native paths (6c6f6bd). Linux full-check run
+44716012963 also passed tests, strict types and syntax checks. These CI jobs do
+not exercise the full model-bearing portable assembly or Windows GUI. Offline
+wheelhouse export now uses the supplied interpreter and disables Python downloads.

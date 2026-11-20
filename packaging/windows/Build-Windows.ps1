@@ -41,7 +41,9 @@ Copy-Item $OllamaRuntime (Join-Path $Output 'Ollama') -Recurse
 $python = Join-Path $Output 'Runtime\python.exe'
 Invoke-Checked $python @('-c',"import sys,platform; assert sys.platform=='win32' and sys.maxsize>2**32 and sys.version_info[:2]==(3,12), 'CPython 3.12 x64 required'")
 $requirements = Join-Path $Output 'Tools\requirements.windows.txt'
-Invoke-Checked $uv @('export','--project',(Join-Path $Output 'App'),'--frozen','--no-dev','--no-emit-project','--output-file',$requirements)
+$export = @('export','--project',(Join-Path $Output 'App'),'--python',$python,'--no-python-downloads','--frozen','--no-dev','--no-emit-project','--output-file',$requirements)
+if ($Wheelhouse) { $export += '--offline' }
+Invoke-Checked $uv $export
 $install = @('pip','install','--python',$python,'--break-system-packages','--require-hashes','--only-binary',':all:','-r',$requirements)
 if ($Wheelhouse) { $install += @('--offline','--no-index','--find-links',(Resolve-Path $Wheelhouse).Path) }
 Invoke-Checked $uv $install
