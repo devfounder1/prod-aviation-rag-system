@@ -33,7 +33,7 @@ def files(root: Path) -> list[Path]:
     for path in root.rglob('*'):
         rel=path.relative_to(root)
         standards=rel.as_posix().startswith('App/data/standards_library/v1/')
-        if (any(p.lower() in MUTABLE for p in rel.parts) and not standards) or path.name in {'.env','bundle-manifest.json'} or rel.as_posix()=='App/config.json':continue
+        if (any(p.lower() in MUTABLE for p in rel.parts) and not standards) or path.name.startswith('~$') or path.name in {'.env','bundle-manifest.json'} or rel.as_posix()=='App/config.json':continue
         if path.is_symlink():raise ValueError('Bundle contains a symlink: '+str(rel))
         if path.is_file():result.append(path)
     return sorted(result)

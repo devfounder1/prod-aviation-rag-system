@@ -67,6 +67,7 @@ def test_bundle_manifest_detects_changed_file_and_keeps_user_data_mutable(tmp_pa
     data=tmp_path/'App/data';data.mkdir();(data/'chats.sqlite3').write_bytes(b'new runtime')
     module.verify(tmp_path)
     (tmp_path/'App/config.json').write_text('{"user_setting":true}')
+    (tmp_path/'~$launch-guide.docx').write_text('Word owner lock')
     logs=tmp_path/'Logs';logs.mkdir();(logs/'launcher.log').write_text('startup')
     module.verify(tmp_path)
     (tmp_path/'App/prilozhenie.py').write_bytes(b'tampered')

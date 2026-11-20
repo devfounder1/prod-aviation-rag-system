@@ -1212,3 +1212,28 @@ line was found intact on one rendered line; no characters outside page bounds.
 Source-kit tooling and README links now use the requested Russian filename and
 require the manual before packaging. Nine focused portable/release tests passed.
 No application behavior, original TU or standard archive changed in this stage.
+
+## Full offline component preparation — 2026-11-20
+
+Prepared complete Windows CPython/dependencies using uv.lock and verified native
+imports on Windows Server x64 (workflow 44722421779). Separate Linux amd64 image
+tars were built from the same source. Public artifacts have recorded GitHub
+SHA-256 digests. Vendor Flet/Ollama ZIPs and WSL/Docker/VC Redistributable installers
+were explicitly downloaded for setup, never at application runtime. Published
+Ollama, WSL and Docker checksums match; Flet and VC provenance disclose where
+no separate publisher digest was provided. No private PDFs or model data were
+uploaded to GitHub.
+
+Added a local-only assembler with path-safe ZIP extraction, exact dependency/image
+source checks, selective content-addressed Ollama copying, cache-link containment,
+registered standards validation, Linux amd64 inspection and full bundle manifest.
+Images/models/original archives are preserved. Updated first-start documentation
+distinguishes complete OFFLINE packages from source kits and leaves native full
+GUI acceptance pending. Word owner-lock files do not invalidate component hashes.
+The manual remains 23 visually checked pages; changed pages 22–23 rechecked.
+
+Validation: 474 full tests passed, 14 optional skipped, one existing PyPDF2 warning;
+13 focused assembly/portable/release checks passed after final packaging updates.
+Exact prepared image execution is checked separately in verify-offline-images.
+The local final archive is validated after actual assembly; this preparation
+record alone does not assert archive completion or Windows GUI acceptance.
